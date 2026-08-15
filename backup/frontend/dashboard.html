@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rental Management System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    
+    <!-- Mobile Topbar - visible only on mobile -->
+    <div class="mobile-topbar" id="mobileTopbar">
+        <span class="mobile-topbar-title">Rental Manager</span>
+    </div>
+    
+    <!-- Mobile Navigation Toggle -->
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+    
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+        <div class="sidebar-header">
+            <h1>Rental Manager</h1>
+            <p class="subtitle">Property Management System</p>
+        </div>
+        <ul class="nav-menu">
+            <li>
+                <a href="#dashboard" class="nav-link active" data-view="dashboard" aria-current="page">
+                    Dashboard
+                </a>
+            </li>
+            <li>
+                <a href="#tenants" class="nav-link" data-view="tenants">
+                    Tenants
+                </a>
+            </li>
+            <li>
+                <a href="#properties" class="nav-link" data-view="properties">
+                    Properties
+                </a>
+            </li>
+            <li>
+                <a href="#payments" class="nav-link" data-view="payments">
+                    Payments
+                </a>
+            </li>
+        </ul>
+        <div class="sidebar-bottom">
+            <div class="sidebar-divider"></div>
+            <ul class="nav-menu-bottom">
+                <li>
+                    <a href="#settings" class="nav-link" data-view="settings">
+                        Settings
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Auth Bar - MOVED INSIDE main-content -->
+    <!-- Main Content -->
+    <main class="main-content" id="mainContent" role="main">
+        
+        <!-- Auth Status Bar - INSIDE main content -->
+        <div class="auth-bar" id="authBar">
+            <div class="auth-bar-left">
+                <span id="authUserAvatar" class="auth-avatar">U</span>
+                <span id="authUserName" class="auth-name">Guest</span>
+                <span id="authUserEmail" class="auth-email"></span>
+                <span id="authStatusBadge" class="badge badge-warning" style="font-size: 0.6rem;">Guest</span>
+            </div>
+            <div class="auth-bar-right">
+                <button id="authLoginBtn" class="btn btn-sm btn-primary">Login</button>
+                <button id="authRegisterBtn" class="btn btn-sm btn-primary">Sign Up</button>
+                <button id="authProfileBtn" class="btn btn-sm btn-outline" style="display:none;">Profile</button>
+                <button id="authLogoutBtn" class="btn btn-sm btn-outline" style="display:none;">Logout</button>
+            </div>
+        </div>
+
+        <!-- Dashboard View -->
+        <section id="dashboard" class="view active" role="tabpanel" aria-label="Dashboard">
+            <div class="view-header">
+                <div class="view-header-left">
+                    <h2>Dashboard</h2>
+                    <p class="view-description">Overview of your rental business</p>
+                </div>
+                <button class="btn btn-sm btn-outline" onclick="App.refreshData()">Refresh</button>
+            </div>
+            
+            <!-- Dashboard Stats -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Properties</div>
+                    <div class="stat-value" id="totalProperties">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Tenants</div>
+                    <div class="stat-value" id="totalTenants">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Occupied Rooms</div>
+                    <div class="stat-value" id="occupiedRooms">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Monthly Revenue</div>
+                    <div class="stat-value" id="monthlyRevenue">$0</div>
+                </div>
+            </div>
+
+            <!-- Ratio Stats -->
+            <div class="ratio-stats" id="ratioStats"></div>
+            
+            <!-- Recent Payments -->
+            <div class="dashboard-section">
+                <div class="section-header">
+                    <h3>Recent Payments</h3>
+                    <a href="#payments" class="btn btn-sm btn-outline" onclick="App.navigateTo('payments')">View All</a>
+                </div>
+                <div class="recent-payments-list" id="recentPayments">
+                    <div class="empty-state">No recent payments</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tenants View -->
+        <section id="tenants" class="view" role="tabpanel" aria-label="Tenants">
+            <div class="view-header">
+                <div class="view-header-left">
+                    <h2>Tenants</h2>
+                    <p class="view-description">Manage all tenant information</p>
+                </div>
+                <button class="btn btn-primary" id="addTenantBtn">Add Tenant</button>
+            </div>
+
+            <!-- Tenant Filters -->
+            <div class="filter-bar">
+                <input type="text" class="search-input" id="tenantSearch" placeholder="Search tenants..." aria-label="Search tenants">
+                <select class="filter-select" id="tenantFilter" aria-label="Filter tenants by payment status">
+                    <option value="all">All Tenants</option>
+                    <option value="paid">Paid</option>
+                    <option value="unpaid">Unpaid</option>
+                    <option value="partial">Partial</option>
+                    <option value="no-payment">No Payment</option>
+                </select>
+                <select class="filter-select" id="tenantPropertyFilter" aria-label="Filter tenants by property">
+                    <option value="all">All Properties</option>
+                </select>
+            </div>
+
+            <!-- Tenants Table -->
+            <div class="table-container">
+                <table class="data-table" id="tenantsTable">
+                    <thead>
+                        <tr>
+                            <th>Profile</th>
+                            <th>Name</th>
+                            <th>Room</th>
+                            <th>Rent</th>
+                            <th>Electricity</th>
+                            <th>Gas</th>
+                            <th>Dues</th>
+                            <th>Total</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tenantsList">
+                        <tr>
+                            <td colspan="9" class="empty-state">No tenants added yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="properties" class="view" role="tabpanel" aria-label="Properties">
+            <div class="view-header">
+                <div class="view-header-left">
+                    <h2>Properties</h2>
+                    <p class="view-description">Manage your properties and rooms</p>
+                </div>
+                <button class="btn btn-primary" id="addPropertyBtn">+ Add Property</button>
+            </div>
+            <div class="properties-grid" id="propertiesList">
+                <div class="empty-state-full">
+                    <p>No properties added yet</p>
+                    <button class="btn btn-primary" id="addPropertyEmptyBtn">Add Your First Property</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Payments View -->
+        <section id="payments" class="view" role="tabpanel" aria-label="Payments">
+            <div class="view-header">
+                <div class="view-header-left">
+                    <h2>Payments</h2>
+                    <p class="view-description">Track rent and utility payments</p>
+                </div>
+                <button class="btn btn-primary" id="addPaymentBtn">Record Payment</button>
+            </div>
+
+            <!-- Payment Filters -->
+            <div class="filter-bar">
+                <select class="filter-select" id="paymentMonthFilter" aria-label="Filter payments by month">
+                    <option value="all">All Months</option>
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
+                <select class="filter-select" id="paymentYearFilter" aria-label="Filter payments by year">
+                    <option value="all">All Years</option>
+                </select>
+            </div>
+
+            <!-- Payments Table -->
+            <div class="table-container">
+                <table class="data-table" id="paymentsTable">
+                    <thead>
+                        <tr>
+                            <th>Tenant</th>
+                            <th>Room</th>
+                            <th>Month</th>
+                            <th>Year</th>
+                            <th>Rent</th>
+                            <th>Electricity</th>
+                            <th>Gas</th>
+                            <th>Dues</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="paymentsList">
+                        <tr>
+                            <td colspan="11" class="empty-state">No payments recorded yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Settings View -->
+        <section id="settings" class="view" role="tabpanel" aria-label="Settings">
+            <div class="view-header">
+                <div class="view-header-left">
+                    <h2>Settings</h2>
+                    <p class="view-description">Manage application settings</p>
+                </div>
+            </div>
+
+            <!-- Settings Grid -->
+            <div class="settings-grid">
+                <!-- Theme Settings -->
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                        <h3>Theme</h3>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="settings-item">
+                            <span class="settings-label">Dark Mode</span>
+                            <div class="toggle-switch">
+                                <input type="checkbox" id="darkModeToggle" aria-label="Toggle dark mode">
+                                <label for="darkModeToggle"></label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Currency Settings -->
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        <h3>Currency</h3>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="settings-item">
+                            <span class="settings-label">Select Currency</span>
+                            <select class="form-control settings-select" id="currencySelect" aria-label="Select currency">
+                                <option value="$">$ (USD)</option>
+                                <option value="Rs">Rs (PKR)</option>
+                                <option value="€">€ (EUR)</option>
+                                <option value="£">£ (GBP)</option>
+                                <option value="¥">¥ (JPY)</option>
+                                <option value="₹">₹ (INR)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Owner Information -->
+                <div class="settings-card settings-card-full">
+                    <div class="settings-card-header">
+                        <svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <h3>Owner Information</h3>
+                    </div>
+                    <div class="settings-card-body">
+                        <form id="ownerForm" class="settings-form" novalidate>
+                            <div class="settings-form-row">
+                                <div class="settings-form-group">
+                                    <label for="ownerName">Full Name</label>
+                                    <input type="text" class="form-control" id="ownerName" placeholder="Enter owner name">
+                                </div>
+                                <div class="settings-form-group">
+                                    <label for="ownerEmail">Email Address</label>
+                                    <input type="email" class="form-control" id="ownerEmail" placeholder="Enter email">
+                                </div>
+                            </div>
+                            <div class="settings-form-row">
+                                <div class="settings-form-group">
+                                    <label for="ownerPhone">Phone Number</label>
+                                    <input type="tel" class="form-control" id="ownerPhone" placeholder="Enter phone number">
+                                </div>
+                                <div class="settings-form-group">
+                                    <label for="ownerAddress">Address</label>
+                                    <input type="text" class="form-control" id="ownerAddress" placeholder="Enter address">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary settings-save-btn">Save Owner Info</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Data Management -->
+                <div class="settings-card settings-card-full">
+                    <div class="settings-card-header">
+                        <svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                        <h3>Data Management</h3>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="settings-actions">
+                            <button class="btn btn-outline" id="exportDataBtn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Export All Data
+                            </button>
+                            <button class="btn btn-danger" id="clearAllDataBtn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                Clear All Data
+                            </button>
+                        </div>
+                        <p class="settings-hint">Export your data as JSON backup or permanently delete all records.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal for Add/Edit Forms -->
+    <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Add New</h3>
+                <button class="modal-close" id="modalClose" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Dynamic form will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Document Viewer -->
+    <div class="modal" id="documentModal" role="dialog" aria-modal="true" aria-labelledby="documentModalTitle">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 id="documentModalTitle">Documents</h3>
+                <button class="modal-close" onclick="document.getElementById('documentModal').classList.remove('active')" aria-label="Close documents">&times;</button>
+            </div>
+            <div class="modal-body" id="documentModalBody">
+                <!-- Documents will be displayed here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>    
+    <script src="js/auth-ui.js"></script>   
+    <script src="js/app.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/tenants.js"></script>
+    <script src="js/properties.js"></script>
+    <script src="js/payments.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/components.js"></script>
+    <script src="js/recycle.js"></script>
+    <script src="js/mobile.js"></script>
+    <script src="js/sample-data.js"></script>
+</body>
+</html>
