@@ -36,6 +36,23 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// ===== SERVE FRONTEND FILES =====
+const frontendPath = path.join(__dirname, '..', 'frontend');
+console.log('Serving frontend from:', frontendPath);
+
+// Serve frontend folder for static files (CSS, JS, HTML)
+app.use(express.static(frontendPath));
+
+// Root route - serve dashboard.html
+app.get('/', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'dashboard.html'));
+});
+
+// Also handle /dashboard.html route
+app.get('/dashboard.html', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'dashboard.html'));
+});
+
 // ===== API Routes =====
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
@@ -53,8 +70,8 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// 404 handler
-app.use((req, res) => {
+// 404 handler - Only for API routes, not for frontend
+app.use('/api/*', (req, res) => {
     res.status(404).json({
         success: false,
         error: `Route not found: ${req.method} ${req.originalUrl}`
@@ -71,6 +88,7 @@ const server = app.listen(PORT, () => {
     console.log('='.repeat(50));
     console.log(`Server running on port ${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/api/health`);
+    console.log(`Frontend: http://localhost:${PORT}/`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log('='.repeat(50));
 });
