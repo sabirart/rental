@@ -1079,7 +1079,7 @@ const Tenants = {
                             <div class="settings-form-group">
                                 <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">CNIC <span class="required" style="color: #dc3545;">*</span></label>
                                 <input type="text" class="form-control" id="tenantCnic" placeholder="XXXXX-XXXXXXX-X" required>
-                                <small style="color: var(--text-light); font-size: 0.65rem; display: block; margin-top: 2px;">Format: 12345-1234567-8</small>
+                                <small style="color: var(--text-light); font-size: 0.55rem; display: block; margin-top: 2px;">Format: 12345-1234567-8</small>
                             </div>
                             <div class="settings-form-group">
                                 <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Origin <span class="required" style="color: #dc3545;">*</span></label>
