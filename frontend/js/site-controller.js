@@ -35,8 +35,10 @@ const SiteController = {
     _applyAuthState() {
         const isAuth = !!Auth.isAuthenticated;
         document.body.classList.toggle('returning-user', isAuth);
+        // Also control visibility of the dashboard trigger buttons
         this._updateDashboardButtons(isAuth);
     },
+
     // Show/hide the "My Dashboard" button based on auth state
     _updateDashboardButtons(isAuthenticated) {
         const myDashboardTriggers = document.querySelectorAll('#myDashboardTrigger, #heroMyDashboard');
@@ -44,6 +46,7 @@ const SiteController = {
             el.style.display = isAuthenticated ? 'inline-flex' : 'none';
         });
     },
+
     _wireReturningUserButtons() {
         const goToDashboard = (e) => {
             e.preventDefault();
