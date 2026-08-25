@@ -1,0 +1,568 @@
+:is(#siteOverlay, #authModalsRoot) * {
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}:is(#siteOverlay, #authModalsRoot) {
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:#f8f7f5;
+    color:#1c1c1c;
+    line-height:1.6;
+}:is(#siteOverlay, #authModalsRoot) {
+    scroll-behavior:smooth;
+}:is(#siteOverlay, #authModalsRoot) a {
+    text-decoration:none;
+    color:inherit;
+}:is(#siteOverlay, #authModalsRoot) .container {
+    max-width:1100px;
+    margin:0 auto;
+    padding:0 20px;
+}:is(#siteOverlay, #authModalsRoot) .btn {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    line-height:1.2;
+    padding:10px 24px;
+    border-radius:50px;
+    font-size:0.9rem;
+    font-weight:500;
+    border:none;
+    cursor:pointer;
+    transition:0.2s;
+    font-family:inherit;
+    background:#1a1a1a;
+    color:#fff;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}:is(#siteOverlay, #authModalsRoot) .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(26,26,26,0.18);
+}:is(#siteOverlay, #authModalsRoot) .btn:hover {
+    background:#2d2d2d;
+}:is(#siteOverlay, #authModalsRoot) .btn-outline {
+    background:transparent;
+    border:1.5px solid #dbdbd8;
+    color:#1c1c1c;
+}:is(#siteOverlay, #authModalsRoot) .btn-outline:hover {
+    background:#f0efec;
+}:is(#siteOverlay, #authModalsRoot) .btn-sm {
+    padding:6px 18px;
+    font-size:0.85rem;
+}:is(#siteOverlay, #authModalsRoot) .btn-primary {
+    background:#1a1a1a;
+    color:#fff;
+}:is(#siteOverlay, #authModalsRoot) .btn-primary:hover {
+    background:#2d2d2d;
+}:is(#siteOverlay, #authModalsRoot) #registerTrigger,
+:is(#siteOverlay, #authModalsRoot) #heroRegister {
+    background:#1a1a1a;
+    color:#fff;
+    border:none;
+}:is(#siteOverlay, #authModalsRoot) #registerTrigger:hover,
+:is(#siteOverlay, #authModalsRoot) #heroRegister:hover {
+    background:#2d2d2d;
+}:is(#siteOverlay, #authModalsRoot) .btn-google {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    padding:10px;
+    border-radius:50px;
+    font-size:0.9rem;
+    border:1px solid #dbdbd8;
+    cursor:pointer;
+    background:#f5f5f5;
+    color:#333;
+    width:100%;
+    margin-top:8px;
+}:is(#siteOverlay, #authModalsRoot) .btn-google:hover {
+    background:#e8e8e8;
+}:is(#siteOverlay, #authModalsRoot) .divider {
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin:10px 0;
+}:is(#siteOverlay, #authModalsRoot) .divider::before,
+:is(#siteOverlay, #authModalsRoot) .divider::after {
+    content:'';
+    flex:1;
+    height:1px;
+    background:#ddd;
+}:is(#siteOverlay, #authModalsRoot) .divider span {
+    color:#999;
+    font-size:.7rem;
+    text-transform:uppercase;
+}:is(#siteOverlay, #authModalsRoot) .modal-overlay {
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.5);
+    backdrop-filter:blur(4px);
+    z-index:2000;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+}:is(#siteOverlay, #authModalsRoot) .modal-overlay.active {
+    display:flex;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box {
+    background:#fff;
+    max-width:400px;
+    width:100%;
+    border-radius:16px;
+    padding:32px 28px 24px;
+    position:relative;
+    animation:slideUp 0.25s ease;
+}
+
+@keyframes slideUp {
+    from {
+        opacity:0;
+        transform:translateY(20px);
+    }
+    to {
+        opacity:1;
+        transform:translateY(0);
+    }
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .close {
+    position:absolute;
+    top:14px;
+    right:18px;
+    background:none;
+    border:none;
+    font-size:1.8rem;
+    color:#9a9a9a;
+    cursor:pointer;
+    line-height:1;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .close:hover {
+    color:#1a1a1a;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box h2 {
+    font-size:1.5rem;
+    font-weight:600;
+    margin-bottom:2px;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .sub {
+    color:#6b6b6b;
+    margin-bottom:20px;
+    font-size:0.9rem;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .form-group {
+    margin-bottom:14px;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .form-group label {
+    display:block;
+    font-size:0.75rem;
+    font-weight:500;
+    color:#6b6b6b;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    margin-bottom:3px;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .form-group input {
+    width:100%;
+    padding:10px 14px;
+    border:1px solid #dbdbd8;
+    border-radius:8px;
+    font-size:0.95rem;
+    font-family:inherit;
+    background:#f8f7f5;
+    outline:none;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .form-group input:focus {
+    border-color:#b0aeaa;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .btn {
+    width:100%;
+    justify-content:center;
+    text-align:center;
+    margin-top:4px;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .switch {
+    text-align:center;
+    margin-top:16px;
+    color:#6b6b6b;
+    font-size:0.88rem;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .switch a {
+    color:#1a1a1a;
+    font-weight:500;
+    cursor:pointer;
+}:is(#siteOverlay, #authModalsRoot) .auth-modal-box .switch a:hover {
+    text-decoration:underline;
+}:is(#siteOverlay, #authModalsRoot) .demo-features {
+    list-style:none;
+    margin:4px 0 22px;
+    padding:0;
+}:is(#siteOverlay, #authModalsRoot) .demo-features li {
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    font-size:0.88rem;
+    color:#5a5a5a;
+    margin-bottom:10px;
+    line-height:1.4;
+}:is(#siteOverlay, #authModalsRoot) .demo-features li:last-child {
+    margin-bottom:0;
+}:is(#siteOverlay, #authModalsRoot) .demo-features i {
+    color:#2f9e5c;
+    font-size:0.9rem;
+    margin-top:2px;
+    flex-shrink:0;
+}:is(#siteOverlay, #authModalsRoot) .demo-features li i.fa-triangle-exclamation {
+    color:#d9922b;
+}:is(#siteOverlay, #authModalsRoot) .demo-actions {
+    display:flex;
+    gap:10px;
+    margin-top:0;
+}:is(#siteOverlay, #authModalsRoot) .demo-actions .btn {
+    flex:1;
+    width:auto;
+    margin-top:0;
+}
+
+/* Auth modals (login/register/verify/forgot/reset/demo) live outside
+   #siteOverlay so they can be opened on top of an already-unlocked
+   dashboard too. Force them above every dashboard overlay (highest
+   dashboard z-index is 99999). */
+#authModalsRoot .modal-overlay { z-index: 999999; }
+
+/* #siteOverlay itself becomes a fixed full-viewport layer so it can sit
+   on top of the dashboard when shown, with its own independent scroll.
+   (.hero below handles its own vertical centering/min-height, same as the
+   original marketing site, so no flex/padding is needed here.) */
+#siteOverlay {
+    position: fixed;
+    inset: 0;
+    overflow-y: auto;
+    z-index: 200000;
+    background: #f8f7f5;
+    height: 100vh;
+}
+@supports (height: 100dvh) {
+    #siteOverlay {
+        height: 100dvh;
+    }
+}
+
+/* Brand name top-left, Login/Sign Up top-right - deliberately no
+   background or border, just the two pieces sitting at the top of the
+   overlay. Fixed so it sits over the top clearance .hero already
+   reserves (padding-top:120px), rather than adding extra space above
+   it. Try Demo stays down in .hero-cta, unchanged. */
+:is(#siteOverlay, #authModalsRoot) .site-topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 40px;
+}
+:is(#siteOverlay, #authModalsRoot) .site-topbar-brand {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #1c1c1c;
+}
+:is(#siteOverlay, #authModalsRoot) .site-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+@media (max-width: 640px) {
+    :is(#siteOverlay, #authModalsRoot) .site-topbar {
+        padding: 16px 20px;
+    }
+}
+
+/* Restored from the original marketing site's hero section - same
+   markup, same classes, same animation (js/animation.js), just reused
+   here instead of as part of a full separate page. */
+:is(#siteOverlay, #authModalsRoot) .hero {
+    padding:120px 0 70px;
+    background:#f8f7f5;
+    min-height:80vh;
+    display:flex;
+    align-items:center;
+}
+:is(#siteOverlay, #authModalsRoot) .hero .container {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:50px;
+    align-items:center;
+}
+:is(#siteOverlay, #authModalsRoot) .hero h1 {
+    font-size:2.8rem;
+    font-weight:600;
+    letter-spacing:-0.02em;
+    line-height:1.2;
+    margin-bottom:14px;
+}
+:is(#siteOverlay, #authModalsRoot) .hero p {
+    color:#6b6b6b;
+    font-size:1.1rem;
+    max-width:480px;
+    margin-bottom:28px;
+}
+:is(#siteOverlay, #authModalsRoot) .hero-cta {
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+}
+:is(#siteOverlay, #authModalsRoot) .hero-img {
+    background:#fff;
+    border-radius:24px;
+    border:1px solid #efeeea;
+    box-shadow:0 12px 30px rgba(0,0,0,0.04);
+    min-height:320px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+    overflow:hidden;
+    aspect-ratio:4/3;
+}
+:is(#siteOverlay, #authModalsRoot) .dashboard-mock {
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:row;
+    background:rgba(248,247,245,0.92);
+    border-radius:24px;
+    padding:24px;
+    gap:16px;
+    z-index:3;
+    pointer-events:none;
+    animation:fadeIn 0.8s ease;
+}
+
+
+@keyframes fadeIn {
+    from {
+        opacity:0;
+        transform:scale(0.95);
+    }
+    to {
+        opacity:1;
+        transform:scale(1);
+    }
+}
+:is(#siteOverlay, #authModalsRoot) .dash-sidebar {
+    width:56px;
+    background:rgba(255,255,255,0.5);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    border-radius:16px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:16px 0;
+    gap:14px;
+    border:1px solid rgba(255,255,255,0.6);
+    box-shadow:0 8px 32px rgba(0,0,0,0.04);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-sidebar span {
+    width:30px;
+    height:30px;
+    background:rgba(0,0,0,0.05);
+    border-radius:10px;
+    transition:all 0.3s ease;
+    border:1px solid rgba(255,255,255,0.3);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-sidebar span:nth-child(1) {
+    background:rgba(0,0,0,0.06);
+    transform:scale(0.95);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-sidebar span:nth-child(2) {
+    background:rgba(0,0,0,0.14);
+    transform:scale(1.05);
+    box-shadow:0 2px 8px rgba(0,0,0,0.06);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-sidebar span:nth-child(3) {
+    background:rgba(0,0,0,0.08);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-sidebar span:nth-child(4) {
+    background:rgba(0,0,0,0.04);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-main {
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
+:is(#siteOverlay, #authModalsRoot) .dash-top {
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+}
+:is(#siteOverlay, #authModalsRoot) .dash-card {
+    background:rgba(255,255,255,0.7);
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+    border-radius:12px;
+    padding:10px 12px;
+    flex:1;
+    min-width:50px;
+    border:1px solid rgba(255,255,255,0.4);
+    box-shadow:0 2px 8px rgba(0,0,0,0.02);
+    transition:all 0.3s ease;
+}
+:is(#siteOverlay, #authModalsRoot) .dash-card .line {
+    height:5px;
+    background:rgba(0,0,0,0.08);
+    border-radius:4px;
+    margin:3px 0;
+    width:60%;
+}
+:is(#siteOverlay, #authModalsRoot) .dash-card .line.short {
+    width:30%;
+}
+:is(#siteOverlay, #authModalsRoot) .dash-card .line.long {
+    width:85%;
+}
+:is(#siteOverlay, #authModalsRoot) .dash-chart {
+    background:rgba(255,255,255,0.5);
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+    border-radius:12px;
+    padding:12px;
+    border:1px solid rgba(255,255,255,0.4);
+    display:flex;
+    align-items:flex-end;
+    gap:6px;
+    height:70px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.02);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-chart .bar {
+    background:rgba(0,0,0,0.1);
+    border-radius:4px 4px 0 0;
+    flex:1;
+    height:20px;
+    transition:all 0.3s ease;
+}
+:is(#siteOverlay, #authModalsRoot) .dash-chart .bar:nth-child(1) {
+    height:40px;
+    background:rgba(0,0,0,0.18);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-chart .bar:nth-child(2) {
+    height:25px;
+    background:rgba(0,0,0,0.08);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-chart .bar:nth-child(3) {
+    height:48px;
+    background:rgba(0,0,0,0.22);
+}
+:is(#siteOverlay, #authModalsRoot) .dash-chart .bar:nth-child(4) {
+    height:30px;
+    background:rgba(0,0,0,0.12);
+}
+:is(#siteOverlay, #authModalsRoot) .hero-img .overlay-items {
+    position:absolute;
+    bottom:30px;
+    left:0;
+    right:0;
+    pointer-events:none;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:0 20px;
+    z-index:5;
+    transition:opacity 0.5s ease;
+}
+:is(#siteOverlay, #authModalsRoot) .hero-img .item-row {
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:center;
+    gap:20px 35px;
+    background:rgba(255,255,255,0.85);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    padding:14px 28px;
+    border-radius:60px;
+    border:1px solid rgba(255,255,255,0.3);
+    box-shadow:0 8px 32px rgba(0,0,0,0.08);
+    transition:all 0.3s ease;
+    min-height:70px;
+}
+:is(#siteOverlay, #authModalsRoot) .hero-img .item {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+    color:rgba(0,0,0,0.35);
+    transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    font-size:0.8rem;
+    font-weight:500;
+    letter-spacing:0.03em;
+    cursor:default;
+    transform:scale(0.9);
+}
+:is(#siteOverlay, #authModalsRoot) .hero-img .item i {
+    font-size:1.8rem;
+    opacity:0.4;
+    transition:all 0.4s ease;
+    color:#1a1a1a;
+}
+:is(#siteOverlay, #authModalsRoot) .hero-img .item.active-item {
+    opacity:1;
+    transform:scale(1.1);
+    color:#1a1a1a;
+}
+:is(#siteOverlay, #authModalsRoot) .hero-img .item.active-item i {
+    opacity:1;
+    color:#1a1a1a;
+}
+
+/* Stack the hero to a single column on mobile - text/buttons above,
+   animation below - restored from the original site's mobile layout. */
+@media (max-width:760px) {
+    :is(#siteOverlay, #authModalsRoot) .hero .container {
+        grid-template-columns:1fr;
+    }
+    :is(#siteOverlay, #authModalsRoot) .hero-img {
+        min-height:220px;
+    }
+    :is(#siteOverlay, #authModalsRoot) .hero-img .item-row {
+        gap:10px 16px;
+        padding:10px 14px;
+        min-height:55px;
+    }
+    :is(#siteOverlay, #authModalsRoot) .hero-img .item i {
+        font-size:1.2rem;
+    }
+    :is(#siteOverlay, #authModalsRoot) .hero-img .item {
+        font-size:0.65rem;
+    }
+}
+
+/* Manage Account modal - tabs + panels */
+:is(#siteOverlay, #authModalsRoot) .manage-account-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 20px;
+}
+:is(#siteOverlay, #authModalsRoot) .manage-account-tab {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 10px 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #6b6b6b;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-family: inherit;
+}
+:is(#siteOverlay, #authModalsRoot) .manage-account-tab.active {
+    color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+}
+:is(#siteOverlay, #authModalsRoot) .manage-account-warning {
+    font-size: 0.85rem;
+    color: #8a5a00;
+    background: #fff7e6;
+    border: 1px solid #ffe4b3;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+:is(#siteOverlay, #authModalsRoot) .manage-account-warning i {
+    margin-right: 6px;
+}
