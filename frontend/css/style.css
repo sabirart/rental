@@ -211,7 +211,7 @@ a{-webkit-tap-highlight-color:transparent}
 .form-control:disabled{opacity:0.6;cursor:not-allowed}
 textarea.form-control{resize:vertical;min-height:80px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.form-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:24px;padding-top:16px;border-top:1px solid var(--border-light)}
+.form-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:24px;padding-top:16px;}
 .action-buttons{display:flex;gap:6px;flex-wrap:wrap}
 .action-btn{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:transparent;font-size:0.75rem;cursor:pointer;transition:var(--transition);color:var(--text-light);min-height:32px}
 .action-btn:hover{background:var(--bg-hover);color:var(--text)}
