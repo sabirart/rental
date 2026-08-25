@@ -14,6 +14,7 @@ h3{font-size:1.125rem}
 h4{font-size:1rem}
 p{margin-bottom:0.5rem}
 a{-webkit-tap-highlight-color:transparent}
+#paymentMonthFilter, #paymentYearFilter { padding: 6px 10px; }
 .modal-close,.recycle-close,.tenant-details-close{background:none;border:none;font-size:1.5rem;color:var(--text-light);cursor:pointer;padding:0 4px;line-height:1}
 .modal-close:hover,.recycle-close:hover,.tenant-details-close:hover{color:var(--text)}
 .tenant-details-close{position:absolute;top:16px;right:20px}
