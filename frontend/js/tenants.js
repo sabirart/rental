@@ -307,7 +307,7 @@ const Tenants = {
                 </div>
             </div>
             
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; background: var(--bg); padding: 8px 12px; border-radius: var(--radius);">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-wrap: nowrap; background: var(--bg); padding: 6px 10px; border-radius: var(--radius); overflow-x: auto;">
                 <button id="prevMonthBtn" class="nav-arrow-btn" style="background: none; border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; cursor: pointer; color: var(--text-light); font-size: 1rem; transition: var(--transition);" title="Previous Month (←)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
