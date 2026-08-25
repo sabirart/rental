@@ -568,6 +568,6 @@
 }
 
 /* Social Footer - Landing page only,  side */
-:is(#siteOverlay) .social-footer { position: absolute; bottom: 30px; right: 40px; display: flex; gap: 16px; }
+:is(#siteOverlay) .social-footer { position: absolute; bottom: 30px; right: 30px; display: flex; gap: 16px; }
 :is(#siteOverlay) .social-footer a { color: #1a1a1a; font-size: 1.1rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 :is(#siteOverlay) .social-footer a:hover { color: #000000; }
