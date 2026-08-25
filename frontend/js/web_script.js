@@ -1,587 +1,432 @@
-// js/settings.js (FIXED - Theme persistence on page load)
+// js/web_script.js - Clean Version
 
-const Settings = {
-    init() {
-        this.loadSettings();
-        this.setupAuthSettings();
-        this.setupEventListeners();
-        this.loadOwnerInfo();
-        this.injectRecycleCard();
-        this.loadNotificationSettings();
-    },
+(function() {
+    'use strict';
 
-    // Populate the reset-day dropdown (1-28 + "Last day of month") and pull
-    // the user's current notifications/reset-day preferences.
-    async loadNotificationSettings() {
-        const daySelect = document.getElementById('monthlyResetDaySelect');
-        if (daySelect && daySelect.options.length <= 1) {
-            for (let d = 1; d <= 28; d++) {
-                const opt = document.createElement('option');
-                opt.value = String(d);
-                opt.textContent = `Day ${d}`;
-                daySelect.insertBefore(opt, daySelect.firstChild);
-            }
-        }
+    // DOM Elements
+    const loginModal = document.getElementById('loginModal');
+    const registerModal = document.getElementById('registerModal');
+    const verifyModal = document.getElementById('verifyModal');
+    const forgotModal = document.getElementById('forgotModal');
+    const resetModal = document.getElementById('resetModal');
 
-        let notificationsEnabled = true;
-        let monthlyResetDay = 31;
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const verifyForm = document.getElementById('verifyForm');
+    const forgotForm = document.getElementById('forgotForm');
+    const resetForm = document.getElementById('resetForm');
 
-        try {
-            if (isDemoMode()) {
-                notificationsEnabled = localStorage.getItem('notifications_enabled') !== 'false';
-                monthlyResetDay = parseInt(localStorage.getItem('monthly_reset_day') || '31');
-            } else {
-                const res = await API.getSettings();
-                if (res.data) {
-                    notificationsEnabled = res.data.notificationsEnabled;
-                    monthlyResetDay = res.data.monthlyResetDay;
-                }
-            }
-        } catch (e) {
-            console.error('Failed to load notification settings:', e.message);
-        }
+    // FIX: these were used everywhere below but never declared,
+    // causing a ReferenceError as soon as any form was submitted.
+    const loginError = document.getElementById('loginError');
+    const registerError = document.getElementById('registerError');
+    const verifyError = document.getElementById('verifyError');
+    const verifySuccess = document.getElementById('verifySuccess');
+    const forgotError = document.getElementById('forgotError');
+    const resetError = document.getElementById('resetError');
 
-        const toggle = document.getElementById('notificationsToggle');
-        if (toggle) toggle.checked = notificationsEnabled;
-        if (daySelect) daySelect.value = String(monthlyResetDay);
-
-        if (typeof Notifications !== 'undefined') {
-            Notifications._enabled = notificationsEnabled;
-            Notifications.refresh();
-        }
-    },
-
-    loadSettings() {
-        // Dark mode - FIXED: Apply immediately with proper check
-        const darkMode = localStorage.getItem('darkMode') === 'true';
-        const toggle = document.getElementById('darkModeToggle');
-        
-        if (toggle) {
-            toggle.checked = darkMode;
-        }
-        
-        // FIXED: Apply dark mode class immediately
-        if (darkMode) {
-            document.body.classList.add('dark-mode');
-        } else {
-            document.body.classList.remove('dark-mode');
-        }
-
-        // Currency
-        const currency = localStorage.getItem('currencySymbol') || '$';
-        const currencySelect = document.getElementById('currencySelect');
-        if (currencySelect) {
-            currencySelect.value = currency;
-        }
-    },
-
-    setupEventListeners() {
-        // Dark mode toggle - FIXED: Use change event properly
-        const toggle = document.getElementById('darkModeToggle');
-        if (toggle) {
-            // Remove any existing listeners to prevent duplicates
-            toggle.removeEventListener('change', this._darkModeHandler);
-            
-            this._darkModeHandler = (e) => {
-                const isDark = e.target.checked;
-                localStorage.setItem('darkMode', isDark);
-                
-                // FIXED: Apply class immediately with smooth transition
-                if (isDark) {
-                    document.body.classList.add('dark-mode');
-                } else {
-                    document.body.classList.remove('dark-mode');
-                }
-                
-                showNotification(`Dark mode ${isDark ? 'enabled' : 'disabled'}`, 'success');
-            };
-            
-            toggle.addEventListener('change', this._darkModeHandler);
-        }
-
-        // Currency change
-        const currencySelect = document.getElementById('currencySelect');
-        if (currencySelect) {
-            currencySelect.removeEventListener('change', this._currencyHandler);
-            
-            this._currencyHandler = (e) => {
-                const currency = e.target.value;
-                localStorage.setItem('currencySymbol', currency);
-                showNotification(`Currency changed to ${currency}`, 'success');
-                // Refresh current view to update currency display
-                App.renderCurrentView();
-            };
-            
-            currencySelect.addEventListener('change', this._currencyHandler);
-        }   
-
-        // Owner form
-        const ownerForm = document.getElementById('ownerForm');
-        if (ownerForm) {
-            ownerForm.removeEventListener('submit', this._ownerHandler);
-            
-            this._ownerHandler = (e) => {
-                e.preventDefault();
-                this.saveOwnerInfo();
-            };
-            
-            ownerForm.addEventListener('submit', this._ownerHandler);
-        }
-
-        // Export data
-        const exportBtn = document.getElementById('exportDataBtn');
-        if (exportBtn) {
-            exportBtn.removeEventListener('click', this._exportHandler);
-            
-            this._exportHandler = () => {
-                this.exportData();
-            };
-            
-            exportBtn.addEventListener('click', this._exportHandler);
-        }
-
-        // Clear all data
-        const clearBtn = document.getElementById('clearAllDataBtn');
-        if (clearBtn) {
-            clearBtn.removeEventListener('click', this._clearHandler);
-            
-            this._clearHandler = () => {
-                Components.showConfirm(
-                    'Clear All Data',
-                    'Are you sure you want to clear all data? This cannot be undone!',
-                    'Clear All',
-                    'Cancel',
-                    'danger',
-                    () => this.clearAllData()
-                );
-            };
-            
-            clearBtn.addEventListener('click', this._clearHandler);
-        }
-
-        // Notifications on/off
-        const notifToggle = document.getElementById('notificationsToggle');
-        if (notifToggle) {
-            notifToggle.removeEventListener('change', this._notifHandler);
-
-            this._notifHandler = async (e) => {
-                const enabled = e.target.checked;
-                try {
-                    if (isDemoMode()) {
-                        localStorage.setItem('notifications_enabled', enabled ? 'true' : 'false');
-                    } else {
-                        await API.updateSettings({ notificationsEnabled: enabled });
-                    }
-                    if (typeof Notifications !== 'undefined') Notifications.setEnabled(enabled);
-                    showNotification(`Notifications ${enabled ? 'enabled' : 'disabled'}`, 'success');
-                } catch (err) {
-                    e.target.checked = !enabled;
-                    showNotification(err.message || 'Failed to update notification setting', 'error');
-                }
-            };
-
-            notifToggle.addEventListener('change', this._notifHandler);
-        }
-
-        // Monthly reset day
-        const resetDaySelect = document.getElementById('monthlyResetDaySelect');
-        if (resetDaySelect) {
-            resetDaySelect.removeEventListener('change', this._resetDayHandler);
-
-            this._resetDayHandler = async (e) => {
-                const day = parseInt(e.target.value);
-                try {
-                    if (isDemoMode()) {
-                        localStorage.setItem('monthly_reset_day', String(day));
-                    } else {
-                        await API.updateSettings({ monthlyResetDay: day });
-                    }
-                    const label = day >= 29 ? 'the last day of the month' : `day ${day}`;
-                    showNotification(`Monthly reset day set to ${label}`, 'success');
-                } catch (err) {
-                    showNotification(err.message || 'Failed to update reset day', 'error');
-                }
-            };
-
-            resetDaySelect.addEventListener('change', this._resetDayHandler);
-        }
-    },
-
-    loadOwnerInfo() {
-        const owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
-        const nameInput = document.getElementById('ownerName');
-        const emailInput = document.getElementById('ownerEmail');
-        const phoneInput = document.getElementById('ownerPhone');
-        const addressInput = document.getElementById('ownerAddress');
-        
-        if (nameInput) nameInput.value = owner.name || '';
-        if (emailInput) emailInput.value = owner.email || '';
-        if (phoneInput) phoneInput.value = owner.phone || '';
-        if (addressInput) addressInput.value = owner.address || '';
-    },
-
-    setupAuthSettings() {
-        const authSection = document.querySelector('.settings-card-account');
-        if (!authSection) {
-            this.injectAccountCard();
-        }
-        this.updateAccountCard();
-    },
-
-    injectAccountCard() {
-        const settingsGrid = document.querySelector('.settings-grid');
-        if (!settingsGrid) return;
-        
-        const card = document.createElement('div');
-        card.className = 'settings-card settings-card-full settings-card-account';
-        card.innerHTML = `
-            <div class="settings-card-header">
-                <svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                </svg>
-                <h3>Account</h3>
-            </div>
-            <div class="settings-card-body" id="accountCardBody">
-                <!-- Dynamic content -->
-            </div>
-        `;
-        
-        const ownerCard = settingsGrid.querySelector('.settings-card-full:first-child');
-        if (ownerCard) {
-            ownerCard.parentNode.insertBefore(card, ownerCard.nextSibling);
-        } else {
-            settingsGrid.prepend(card);
-        }
-        
-        this.updateAccountCard();
-    },
-
-    updateAccountCard() {
-        const body = document.getElementById('accountCardBody');
-        if (!body) return;
-        
-        if (Auth.isAuthenticated && Auth.user) {
-            const user = Auth.user;
-            
-            body.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                    <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 500; overflow: hidden; flex-shrink: 0;">
-                        ${user.profilePic ? `<img src="${user.profilePic}" style="width: 100%; height: 100%; object-fit: cover;">` : (user.name || 'U').charAt(0).toUpperCase()}
-                    </div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: 500; font-size: 1.05rem;">${user.name || 'User'}</div>
-                        <div style="color: var(--text-light); font-size: 0.85rem;">${user.email || ''}</div>
-                    </div>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button class="btn btn-sm btn-outline" onclick="DashboardAuthBar.showProfile()">Manage Account</button>
-                        <button class="btn btn-sm btn-danger" onclick="Auth.logout()">Logout</button>
-                    </div>
-                </div>
-            `;
-        } else {
-            body.innerHTML = `
-                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                    <div>
-                        <div style="font-weight: 500;">Not Logged In</div>
-                        <div style="color: var(--text-light); font-size: 0.85rem;">Create an account to save your data permanently</div>
-                    </div>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button class="btn btn-sm btn-primary" onclick="DashboardAuthBar.showLogin()">Login</button>
-                        <button class="btn btn-sm btn-outline" onclick="DashboardAuthBar.showRegister()">Sign Up</button>
-                    </div>
-                </div>
-            `;
-        }
-    },
-
-    saveOwnerInfo() {
-        const owner = {
-            name: document.getElementById('ownerName').value.trim(),
-            email: document.getElementById('ownerEmail').value.trim(),
-            phone: document.getElementById('ownerPhone').value.trim(),
-            address: document.getElementById('ownerAddress').value.trim()
-        };
-        
-        // Validate email
-        if (owner.email && !validateEmail(owner.email)) {
-            showNotification('Please enter a valid email address', 'error');
-            return;
-        }
-        
-        // Validate phone
-        if (owner.phone && !validatePhone(owner.phone)) {
-            showNotification('Please enter a valid phone number', 'error');
-            return;
-        }
-        
-        localStorage.setItem('ownerInfo', JSON.stringify(owner));
-        showNotification('Owner information saved successfully', 'success');
-    },
-
-    exportData() {
-        const data = {
-            tenants: App.state.tenants,
-            properties: App.state.properties,
-            payments: App.state.payments,
-            owner: JSON.parse(localStorage.getItem('ownerInfo') || '{}'),
-            exportedAt: new Date().toISOString(),
-            version: '1.0.0'
-        };
-
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `rental_data_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        showNotification('Data exported successfully', 'success');
-    },
-
-    async clearAllData() {
-        if (isDemoMode()) {
-            Components.showConfirm(
-                'Clear All Data',
-                'This will reset the demo back to its original sample data. Continue?',
-                'Clear',
-                'Cancel',
-                'danger',
-                async () => {
-                    resetDemoStore();
-                    await App.loadData();
-                    App.renderCurrentView();
-                    Components.showSuccess('Demo data reset successfully');
-                }
-            );
-            return;
-        }
-        Components.showLoading('Clearing all data...');
-        
-        try {
-            await API.deleteAllTenants();
-            await API.deleteAllProperties();
-            await API.deleteAllPayments();
-            
-            localStorage.removeItem('tenants_cache');
-            localStorage.removeItem('properties_cache');
-            localStorage.removeItem('payments_cache');
-            localStorage.removeItem('last_cache_update');
-            
-            App.state.tenants = [];
-            App.state.properties = [];
-            App.state.payments = [];
-            
-            await App.loadData();
-            App.renderCurrentView();
-            
-            Components.hideLoading();
-            Components.showSuccess('All data cleared successfully');
-        } catch (error) {
-            Components.hideLoading();
-            Components.showError(error.message || 'Failed to clear data');
-            
-            try {
-                await App.loadData();
-                App.renderCurrentView();
-            } catch (reloadError) {
-                console.error('Failed to reload after error:', reloadError);
-            }
-        }
-    },
-    
-    importData(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    
-                    if (!data.tenants || !data.properties || !data.payments) {
-                        reject(new Error('Invalid data format. Missing required collections.'));
-                        return;
-                    }
-                    
-                    resolve(data);
-                } catch (error) {
-                    reject(new Error('Failed to parse JSON file: ' + error.message));
-                }
-            };
-            reader.onerror = () => reject(new Error('Failed to read file'));
-            reader.readAsText(file);
-        });
-    },
-    
-    resetSettings() {
-        Components.showConfirm(
-            'Reset Settings',
-            'Are you sure you want to reset all settings to default?',
-            'Reset',
-            'Cancel',
-            'warning',
-            () => {
-                localStorage.removeItem('darkMode');
-                localStorage.removeItem('language');
-                localStorage.removeItem('ownerInfo');
-                localStorage.removeItem('api_url');
-                
-                window.location.reload();
-            }
-        );
-    },
-
-    injectRecycleCard() {
-        const settingsGrid = document.querySelector('.settings-grid');
-        if (!settingsGrid) return;
-        
-        if (document.querySelector('.settings-card-recycle')) return;
-        
-        const recycleCard = document.createElement('div');
-        recycleCard.className = 'settings-card settings-card-full settings-card-recycle';
-        recycleCard.innerHTML = `
-            <div class="settings-card-header">
-                <svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 6h18"/>
-                    <path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
-                    <path d="M10 11v4"/>
-                    <path d="M14 11v4"/>
-                </svg>
-                <h3>Recycle Bin</h3>
-                <span class="badge badge-info" id="recycleCount">0</span>
-            </div>
-            <div class="settings-card-body">
-                <div class="settings-actions">
-                    <button class="btn btn-outline" id="openRecycleBtn">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9"/>
-                        </svg>
-                        Open Recycle Bin
-                    </button>
-                    <button class="btn btn-outline" id="autoCleanBtn">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 2v4"/>
-                            <path d="M12 18v4"/>
-                            <path d="M4 12H2"/>
-                            <path d="M22 12h-2"/>
-                            <path d="M19.07 4.93l-2.83 2.83"/>
-                            <path d="M7.76 16.24l-2.83 2.83"/>
-                            <path d="M16.24 7.76l2.83-2.83"/>
-                            <path d="M4.93 19.07l2.83-2.83"/>
-                        </svg>
-                        Auto Clean (15 days)
-                    </button>
-                </div>
-                <p class="settings-hint">Deleted tenants and properties are stored here for 15 days before auto-deletion. You can recover or permanently delete them.</p>
-            </div>
-        `;
-        
-        const dataManagementCard = settingsGrid.querySelector('.settings-card-full:last-child');
-        if (dataManagementCard) {
-            dataManagementCard.parentNode.insertBefore(recycleCard, dataManagementCard.nextSibling);
-        } else {
-            settingsGrid.appendChild(recycleCard);
-        }
-        
-        const openBtn = document.getElementById('openRecycleBtn');
-        if (openBtn) {
-            openBtn.removeEventListener('click', this._openRecycleHandler);
-            this._openRecycleHandler = () => {
-                if (typeof Recycle !== 'undefined') {
-                    Recycle.showOverlay();
-                    this.updateRecycleCount();
-                } else {
-                    showNotification('Recycle module not loaded', 'error');
-                }
-            };
-            openBtn.addEventListener('click', this._openRecycleHandler);
-        }
-        
-        const cleanBtn = document.getElementById('autoCleanBtn');
-        if (cleanBtn) {
-            cleanBtn.removeEventListener('click', this._cleanHandler);
-            this._cleanHandler = async () => {
-                if (isDemoMode()) {
-                    Components.showAlert(
-                        'Demo Mode',
-                        'Please create an account or login to manage the recycle bin.',
-                        'Login',
-                        'primary',
-                        () => { SiteController.openAuthModal('login'); }
-                    , { showCancel: true });
-                    return;
-                }
-                try {
-                    await API.cleanRecycleBin(15);
-                    showNotification('Items older than 15 days cleared', 'success');
-                    this.updateRecycleCount();
-                } catch (error) {
-                    showNotification(error.message || 'Failed to clean recycle bin', 'error');
-                }
-            };
-            cleanBtn.addEventListener('click', this._cleanHandler);
-        }
-        
-        this.updateRecycleCount();
-    },
-
-    async updateRecycleCount() {
-        try {
-            const response = await API.getRecycleCount();
-            const count = response.data ? response.data.total : 0;
-            const badge = document.getElementById('recycleCount');
-            if (badge) {
-                badge.textContent = count;
-                badge.style.display = count > 0 ? 'inline-block' : 'none';
-            }
-        } catch (error) {
-            // Ignore
+    // ===== MODAL FUNCTIONS =====
+    function openModal(modal) {
+        if (modal) {
+            // Close any other overlay that's already open (another auth
+            // modal, the notifications panel, the recycle bin, the data
+            // import/export panel) so two overlays can never be stacked.
+            if (window.closeAllOverlays) window.closeAllOverlays(modal.id);
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
         }
     }
-};
 
-// FIXED: Apply dark mode immediately before DOM content loads
-(function applyThemeImmediately() {
-    const darkMode = localStorage.getItem('darkMode') === 'true';
-    if (darkMode) {
-        document.documentElement.classList.add('dark-mode');
-        // Also add to body when it's available
-        if (document.body) {
-            document.body.classList.add('dark-mode');
-        } else {
-            document.addEventListener('DOMContentLoaded', function() {
-                document.body.classList.add('dark-mode');
+    function closeModal(modal) {
+        if (modal) {
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+    }
+
+    function showError(element, message) {
+        if (element) {
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+    }
+
+    function hideError(element) {
+        if (element) {
+            element.style.display = 'none';
+        }
+    }
+
+    // ===== EXPOSE TO GLOBAL =====
+    window.SiteAuthUI = {
+        showLogin: function() {
+            openModal(loginModal);
+        },
+        showRegister: function() {
+            openModal(registerModal);
+        },
+        closeModal: function(id) {
+            const modalMap = {
+                'loginModal': loginModal,
+                'registerModal': registerModal,
+                'verifyModal': verifyModal,
+                'forgotModal': forgotModal,
+                'resetModal': resetModal
+            };
+            const modal = modalMap[id] || document.getElementById(id);
+            if (modal) {
+                closeModal(modal);
+            }
+        },
+        showVerify: function(email) {
+            if (email) {
+                document.getElementById('verifyEmail').value = email;
+            }
+            openModal(verifyModal);
+        },
+        showForgot: function() {
+            openModal(forgotModal);
+        },
+        showReset: function(email) {
+            if (email) {
+                document.getElementById('resetEmail').value = email;
+            }
+            openModal(resetModal);
+        }
+    };
+
+    // ===== AUTH HANDLERS =====
+    async function handleLogin(e) {
+        e.preventDefault();
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+
+        hideError(loginError);
+
+        if (!email || !password) {
+            showError(loginError, 'Please fill in all fields');
+            return;
+        }
+
+        try {
+            const result = await Auth.login(email, password);
+            closeModal(loginModal);
+            // Redirect to dashboard
+            SiteController.unlockDashboard();
+        } catch (error) {
+            if (error.message === 'VERIFY_REQUIRED') {
+                closeModal(loginModal);
+                document.getElementById('verifyEmail').value = email;
+                openModal(verifyModal);
+            } else {
+                showError(loginError, error.message || 'Login failed');
+            }
+        }
+    }
+
+    async function handleRegister(e) {
+        e.preventDefault();
+        const name = document.getElementById('registerName').value.trim();
+        const email = document.getElementById('registerEmail').value.trim();
+        const password = document.getElementById('registerPassword').value;
+
+        hideError(registerError);
+
+        if (!name || !email || !password) {
+            showError(registerError, 'Please fill in all fields');
+            return;
+        }
+
+        if (password.length < 6) {
+            showError(registerError, 'Password must be at least 6 characters');
+            return;
+        }
+
+        try {
+            await Auth.register(name, email, password);
+            closeModal(registerModal);
+            document.getElementById('verifyEmail').value = email;
+            hideError(verifyError);
+            hideError(verifySuccess);
+            openModal(verifyModal);
+        } catch (error) {
+            showError(registerError, error.message || 'Registration failed');
+        }
+    }
+
+    async function handleVerify(e) {
+        e.preventDefault();
+        const email = document.getElementById('verifyEmail').value.trim();
+        const otp = document.getElementById('verifyOtp').value.trim();
+
+        hideError(verifyError);
+
+        if (!otp) {
+            showError(verifyError, 'Please enter the OTP');
+            return;
+        }
+
+        if (otp.length !== 6 || !/^\d+$/.test(otp)) {
+            showError(verifyError, 'OTP must be 6 digits');
+            return;
+        }
+
+        try {
+            await Auth.verifyEmail(email, otp);
+            closeModal(verifyModal);
+            SiteController.unlockDashboard();
+        } catch (error) {
+            showError(verifyError, error.message || 'Verification failed');
+        }
+    }
+
+    async function handleResendVerify(e) {
+        e.preventDefault();
+        const email = document.getElementById('verifyEmail').value.trim();
+        hideError(verifyError);
+        hideError(verifySuccess);
+
+        if (!email) {
+            showError(verifyError, 'Email not found');
+            return;
+        }
+
+        try {
+            await Auth.resendVerification(email);
+            showError(verifySuccess, 'A new OTP has been sent to your email.');
+        } catch (error) {
+            showError(verifyError, error.message || 'Failed to resend OTP');
+        }
+    }
+
+    async function handleForgot(e) {
+        e.preventDefault();
+        const email = document.getElementById('forgotEmail').value.trim();
+
+        hideError(forgotError);
+
+        if (!email) {
+            showError(forgotError, 'Please enter your email');
+            return;
+        }
+
+        try {
+            await Auth.forgotPassword(email);
+            closeModal(forgotModal);
+            document.getElementById('resetEmail').value = email;
+            openModal(resetModal);
+        } catch (error) {
+            showError(forgotError, error.message || 'Failed to send OTP');
+        }
+    }
+
+    async function handleReset(e) {
+        e.preventDefault();
+        const email = document.getElementById('resetEmail').value.trim();
+        const otp = document.getElementById('resetOtp').value.trim();
+        const newPassword = document.getElementById('resetNewPassword').value;
+
+        hideError(resetError);
+
+        if (!email || !otp || !newPassword) {
+            showError(resetError, 'Please fill in all fields');
+            return;
+        }
+
+        if (otp.length !== 6 || !/^\d+$/.test(otp)) {
+            showError(resetError, 'OTP must be 6 digits');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            showError(resetError, 'Password must be at least 6 characters');
+            return;
+        }
+
+        try {
+            await Auth.resetPassword(email, otp, newPassword);
+            closeModal(resetModal);
+            openModal(loginModal);
+        } catch (error) {
+            showError(resetError, error.message || 'Password reset failed');
+        }
+    }
+
+// ===== GOOGLE LOGIN - FIXED VERSION =====
+async function handleGoogleLogin() {
+    try {
+        // Load Google SDK
+        if (typeof google === 'undefined') {
+            await new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://accounts.google.com/gsi/client';
+                script.async = true;
+                script.defer = true;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
             });
         }
-    }
-})();
 
-// Initialize settings when view is rendered
-document.addEventListener('DOMContentLoaded', () => {
-    // Apply theme again to ensure it's set
-    const darkMode = localStorage.getItem('darkMode') === 'true';
-    if (darkMode) {
-        document.body.classList.add('dark-mode');
-    } else {
-        document.body.classList.remove('dark-mode');
-    }
-    
-    // Update toggle state if it exists
-    const toggle = document.getElementById('darkModeToggle');
-    if (toggle) {
-        toggle.checked = darkMode;
-    }
-    
-    if (window.location.hash === '#settings') {
-        setTimeout(() => Settings.init(), 150);
-    }
-    
-    const settingsLink = document.querySelector('[data-view="settings"]');
-    if (settingsLink) {
-        settingsLink.addEventListener('click', () => {
-            setTimeout(() => Settings.init(), 150);
+        // Use the Google Identity Services popup
+        const client = google.accounts.oauth2.initTokenClient({
+            // FIX: was a different Client ID than backend's .env GOOGLE_CLIENT_ID —
+            // they must match, since Google validates the requesting origin per client ID.
+            client_id: '662426431112-p5fh467egk9h20cqpqtl5eve2kre7fkk.apps.googleusercontent.com',
+            scope: 'email profile',
+            callback: async (response) => {
+                if (response.error) {
+                    alert('Google login failed: ' + response.error);
+                    return;
+                }
+                
+                try {
+                    const result = await Auth.googleLogin(response.access_token);
+                    closeModal(loginModal);
+                    closeModal(registerModal);
+                    SiteController.unlockDashboard();
+                } catch (error) {
+                    alert('Login failed: ' + error.message);
+                }
+            }
         });
-    }
-});
 
-window.Settings = Settings;
+        client.requestAccessToken();
+    } catch (error) {
+        console.error('Google login error:', error);
+        alert('Failed to initialize Google login');
+    }
+}
+
+    // ===== CLOSE MODALS =====
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+                closeModal(modal);
+            });
+        }
+    });
+
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal(this);
+            }
+        });
+    });
+
+    // ===== CLOSE BUTTONS =====
+    document.getElementById('loginClose')?.addEventListener('click', function() { closeModal(loginModal); });
+    document.getElementById('registerClose')?.addEventListener('click', function() { closeModal(registerModal); });
+    document.getElementById('verifyClose')?.addEventListener('click', function() { closeModal(verifyModal); });
+    document.getElementById('forgotClose')?.addEventListener('click', function() { closeModal(forgotModal); });
+    document.getElementById('resetClose')?.addEventListener('click', function() { closeModal(resetModal); });
+
+    // ===== SWITCH BETWEEN MODALS =====
+    document.getElementById('loginSwitchRegister')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        closeModal(loginModal);
+        openModal(registerModal);
+    });
+
+    document.getElementById('registerSwitchLogin')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        closeModal(registerModal);
+        openModal(loginModal);
+    });
+
+    document.getElementById('loginForgotLink')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        closeModal(loginModal);
+        openModal(forgotModal);
+    });
+
+    document.getElementById('forgotBackLogin')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        closeModal(forgotModal);
+        openModal(loginModal);
+    });
+
+    document.getElementById('resetBackLogin')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        closeModal(resetModal);
+        openModal(loginModal);
+    });
+
+    document.getElementById('verifyBackLogin')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        closeModal(verifyModal);
+        openModal(loginModal);
+    });
+
+    document.getElementById('resendVerifyLink')?.addEventListener('click', handleResendVerify);
+
+    // ===== FORM SUBMISSIONS =====
+    loginForm?.addEventListener('submit', handleLogin);
+    registerForm?.addEventListener('submit', handleRegister);
+    verifyForm?.addEventListener('submit', handleVerify);
+    forgotForm?.addEventListener('submit', handleForgot);
+    resetForm?.addEventListener('submit', handleReset);
+
+    // ===== GOOGLE BUTTONS =====
+    document.getElementById('googleLoginBtn')?.addEventListener('click', handleGoogleLogin);
+    document.getElementById('googleRegisterBtn')?.addEventListener('click', handleGoogleLogin);
+
+    // ===== URL PARAMS =====
+    const urlParams = new URLSearchParams(window.location.search);
+    const show = urlParams.get('show');
+    
+    if (show === 'login') {
+        setTimeout(function() { openModal(loginModal); }, 500);
+    } else if (show === 'register') {
+        setTimeout(function() { openModal(registerModal); }, 500);
+    }
+
+    // ===== NAVIGATION BUTTONS =====
+    // Login buttons
+    document.querySelectorAll('#loginTrigger, #heroLogin').forEach(el => {
+        el?.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (Auth.isAuthenticated) {
+                SiteController.unlockDashboard();
+            } else {
+                openModal(loginModal);
+            }
+        });
+    });
+
+    // Register buttons
+    document.querySelectorAll('#registerTrigger, #aboutRegister, #ctaRegister').forEach(el => {
+        el?.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (Auth.isAuthenticated) {
+                SiteController.unlockDashboard();
+            } else {
+                openModal(registerModal);
+            }
+        });
+    });
+
+    // Get Demo button
+    const demoModal = document.getElementById('demoModal');
+
+    document.getElementById('heroRegister')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        if (Auth.isAuthenticated) {
+            SiteController.unlockDashboard();
+            return;
+        }
+        openModal(demoModal);
+    });
+
+    document.getElementById('demoConfirmBtn')?.addEventListener('click', function() {
+        closeModal(demoModal);
+        Auth.enableDemoMode();
+        SiteController.unlockDashboard();
+    });
+
+    document.getElementById('demoClose')?.addEventListener('click', function() {
+        closeModal(demoModal);
+    });
+
+})();
