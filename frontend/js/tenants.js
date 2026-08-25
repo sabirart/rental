@@ -876,7 +876,7 @@ const Tenants = {
                         </span>
                     </div>
                     <div class="detail-item">
-                        <span class="detail-label">Advance Payment</span>
+                        <span class="detail-label">Advance</span>
                         <span class="detail-value">${formatCurrency(tenant.advance_payment || 0)}</span>
                     </div>
                     <div class="detail-item">
@@ -1093,7 +1093,7 @@ const Tenants = {
                                 <input type="tel" class="form-control" id="tenantMobile" placeholder="e.g. 03001234567">
                             </div>
                             <div class="settings-form-group">
-                                <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Advance Payment</label>
+                                <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Advance</label>
                                 <input type="number" class="form-control" id="tenantAdvancePayment" min="0" step="0.01" placeholder="0">
                             </div>
                         </div>
@@ -1594,7 +1594,7 @@ const Tenants = {
                                 <input type="tel" class="form-control" id="tenantMobile" value="${escapeHTML(tenant.mobile_number || '')}" placeholder="e.g. 03001234567">
                             </div>
                             <div class="settings-form-group">
-                                <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Advance Payment</label>
+                                <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Advance</label>
                                 <input type="number" class="form-control" id="tenantAdvancePayment" value="${tenant.advance_payment || 0}" min="0" step="0.01">
                             </div>
                         </div>
