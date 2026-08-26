@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        /* Belt-and-suspenders alongside MainActivity.java's setTextZoom(100):
+           stops the page's own text from being scaled up on WebViews/devices
+           that still apply font-boosting despite that setting. */
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    </style>
     <title>Rental Manager · Free Property Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
     <link rel="stylesheet" href="css/style.css?v=v9" />
@@ -715,6 +721,45 @@
                     <a href="#" class="btn btn-outline" id="heroMyDashboard">My Dashboard</a>
                 </div>
             </div>
+            <script>
+            (function () {
+                // FIX: without this, a returning logged-in visitor briefly saw
+                // Login/Sign Up/Try Demo (the signed-out buttons) before
+                // site-controller.js's DOMContentLoaded handler corrected them
+                // to Logout/My Dashboard a moment later - the "buttons
+                // fighting/flashing" bug. This runs immediately as the page
+                // parses (before anything below is painted) and mirrors
+                // SiteController._updateButtons()'s authenticated-state values
+                // exactly, so the correct buttons are already in place on the
+                // very first paint - site-controller.js still runs afterward as
+                // normal and simply confirms the same state, with no visible
+                // change and no other behavior altered.
+                try {
+                    var authed = !!(localStorage.getItem('auth_token') && localStorage.getItem('auth_user'));
+                    if (!authed) return;
+                    document.body.classList.add('returning-user');
+
+                    var loginBtn = document.getElementById('loginTrigger');
+                    var signupBtn = document.getElementById('registerTrigger');
+                    var dashBtn = document.getElementById('myDashboardTrigger');
+                    var heroDemo = document.getElementById('heroRegister');
+                    var heroDash = document.getElementById('heroMyDashboard');
+
+                    if (loginBtn) loginBtn.style.display = 'none';
+                    if (signupBtn) signupBtn.style.display = 'none';
+                    if (dashBtn) {
+                        dashBtn.style.display = 'inline-flex';
+                        dashBtn.textContent = 'Logout';
+                        dashBtn.className = 'btn btn-outline btn-sm';
+                    }
+                    if (heroDemo) heroDemo.style.display = 'none';
+                    if (heroDash) {
+                        heroDash.style.display = 'inline-flex';
+                        heroDash.className = 'btn btn-primary';
+                    }
+                } catch (e) {}
+            })();
+            </script>
             <div class="hero-img" id="heroIcons">
                 <div class="dashboard-mock" id="dashboardMock">
                     <div class="dash-sidebar">
@@ -1011,8 +1056,16 @@
     </div>
 
     <!-- Scripts -->
+    <!-- Capacitor native bridge: no-op on the regular website, wires native
+         Google Sign-In etc. when running inside the Android app. Must load
+         first since native-auth.js and mobile-native.js depend on its globals. -->
+    <script src="js/capacitor-bridge.js"></script>
+    <script src="js/native-config.js?v=v9"></script>
     <script src="js/api.js?v=v9"></script>
     <script src="js/auth.js?v=v9"></script>
+    <script src="js/native-auth.js?v=v9"></script>
+    <script src="js/native-export.js?v=v9"></script>
+    <script src="js/mobile-native.js?v=v9"></script>
     <script src="js/app.js?v=v9"></script>
     <script src="js/dashboard.js?v=v9"></script>
     <script src="js/tenants.js?v=v9"></script>
