@@ -12,7 +12,7 @@
 // overlay or the dashboard.
 
 const SiteController = {
-    _dashboardUnlocked: false,
+    _Unlocked: false,
 
     init() {
         Auth.init();
@@ -41,20 +41,34 @@ const SiteController = {
 
     // Show/hide the "My Dashboard" button based on auth state
     _updateDashboardButtons(isAuthenticated) {
-        const myDashboardTriggers = document.querySelectorAll('#myDashboardTrigger, #heroMyDashboard');
-        myDashboardTriggers.forEach(el => {
-            el.style.display = isAuthenticated ? 'inline-flex' : 'none';
-        });
-    },
-
-    _wireReturningUserButtons() {
-        const goToDashboard = (e) => {
-            e.preventDefault();
-            this.unlockDashboard();
-        };
-        document.getElementById('myDashboardTrigger')?.addEventListener('click', goToDashboard);
-        document.getElementById('heroMyDashboard')?.addEventListener('click', goToDashboard);
-    },
+        const heroButton = document.getElementById('heroMyDashboard');
+        if (heroButton) {
+            heroButton.style.display = isAuthenticated ? 'inline-flex' : 'none';
+        }
+        
+        const topButton = document.getElementById('myDashboardTrigger');
+        if (topButton) {
+            if (isAuthenticated) {
+                topButton.textContent = 'Logout';
+                topButton.className = 'btn btn-outline btn-sm';
+                const newBtn = topButton.cloneNode(true);
+                topButton.parentNode.replaceChild(newBtn, topButton);
+                newBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    await Auth.logout();
+                });
+            } else {
+                topButton.textContent = 'My Dashboard';
+                topButton.className = 'btn btn-primary btn-sm';
+                const newBtn = topButton.cloneNode(true);
+                topButton.parentNode.replaceChild(newBtn, topButton);
+                newBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    SiteController.unlockDashboard();
+                });
+            }
+        }
+    }
 
     // Opens one of the auth modals (login/register/verify/forgot/reset/demo)
     // on top of whatever is currently showing (site overlay or dashboard).
