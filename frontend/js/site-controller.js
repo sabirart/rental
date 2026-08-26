@@ -68,7 +68,16 @@ const SiteController = {
                 });
             }
         }
-    }
+    },
+
+    _wireReturningUserButtons() {
+        const goToDashboard = (e) => {
+            e.preventDefault();
+            this.unlockDashboard();
+        };
+        document.getElementById('myDashboardTrigger')?.addEventListener('click', goToDashboard);
+        document.getElementById('heroMyDashboard')?.addEventListener('click', goToDashboard);
+    },
 
     // Opens one of the auth modals (login/register/verify/forgot/reset/demo)
     // on top of whatever is currently showing (site overlay or dashboard).
