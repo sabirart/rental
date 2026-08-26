@@ -109,11 +109,13 @@ const Auth = {
         return data.data;
     },
     
-    async googleLogin(googleToken) {
+    // accessToken = web popup flow (google.accounts.oauth2), idToken = native
+    // app flow (Capacitor SocialLogin via Credential Manager). Only one is sent.
+    async googleLogin({ accessToken, idToken } = {}) {
         const response = await fetch(`${API.baseURL}/auth/google-login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: googleToken })
+            body: JSON.stringify(idToken ? { idToken } : { token: accessToken })
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || data.message || 'Google login failed');
