@@ -317,29 +317,50 @@ const authController = {
     },
 
     // Google Login
+    // Supports two request shapes so the same endpoint serves both the web
+    // popup flow and the native Android app:
+    //   { token: <access_token> }  - web (Google Identity Services initTokenClient)
+    //   { idToken: <id_token> }    - native (Capacitor @capgo/capacitor-social-login,
+    //                                 which returns an ID token via Credential Manager)
     async googleLogin(req, res, next) {
         try {
-            const { token: googleToken } = req.body;
-            
-            if (!googleToken) {
+            const { token: googleToken, idToken } = req.body;
+
+            if (!googleToken && !idToken) {
                 throw new AppError('Google token is required', 400);
             }
-            
-            // FIX: the frontend uses Google's implicit OAuth flow (initTokenClient),
-            // which returns an access_token, not an ID token/JWT. verifyIdToken()
-            // only accepts ID tokens, so it always failed here. We now validate the
-            // access_token by calling Google's userinfo endpoint instead.
-            const userInfoResponse = await fetch(
-                `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(googleToken)}`
-            );
-            
-            if (!userInfoResponse.ok) {
-                throw new AppError('Invalid or expired Google token', 401);
+
+            let email, name, picture, googleId;
+
+            if (idToken) {
+                // Native flow: verify the signed ID token's signature, audience and
+                // issuer with Google's library instead of trusting it blindly.
+                const ticket = await googleClient.verifyIdToken({
+                    idToken,
+                    audience: process.env.GOOGLE_CLIENT_ID
+                });
+                const payload = ticket.getPayload();
+                if (!payload) {
+                    throw new AppError('Invalid Google ID token', 401);
+                }
+                ({ email, name, picture, sub: googleId } = payload);
+            } else {
+                // Web flow: the frontend uses Google's implicit OAuth flow
+                // (initTokenClient), which returns an access_token, not an ID
+                // token/JWT. verifyIdToken() only accepts ID tokens, so we
+                // validate the access_token via Google's userinfo endpoint instead.
+                const userInfoResponse = await fetch(
+                    `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(googleToken)}`
+                );
+
+                if (!userInfoResponse.ok) {
+                    throw new AppError('Invalid or expired Google token', 401);
+                }
+
+                const payload = await userInfoResponse.json();
+                ({ email, name, picture, sub: googleId } = payload);
             }
-            
-            const payload = await userInfoResponse.json();
-            const { email, name, picture, sub: googleId } = payload;
-            
+
             if (!email) {
                 throw new AppError('Could not retrieve email from Google account', 400);
             }
