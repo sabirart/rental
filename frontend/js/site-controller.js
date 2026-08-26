@@ -35,48 +35,71 @@ const SiteController = {
     _applyAuthState() {
         const isAuth = !!Auth.isAuthenticated;
         document.body.classList.toggle('returning-user', isAuth);
-        // Also control visibility of the dashboard trigger buttons
-        this._updateDashboardButtons(isAuth);
+        this._updateButtons(isAuth);
     },
 
-    // Show/hide the "My Dashboard" button based on auth state
-    _updateDashboardButtons(isAuthenticated) {
-        const heroButton = document.getElementById('heroMyDashboard');
-        if (heroButton) {
-            heroButton.style.display = isAuthenticated ? 'inline-flex' : 'none';
-        }
+    _updateButtons(isAuthenticated) {
+        // Topbar buttons - Login and Sign Up
+        const loginBtn = document.getElementById('loginTrigger');
+        const signupBtn = document.getElementById('registerTrigger');
+        const logoutBtn = document.getElementById('myDashboardTrigger');
         
-        const topButton = document.getElementById('myDashboardTrigger');
-        if (topButton) {
-            if (isAuthenticated) {
-                topButton.textContent = 'Logout';
-                topButton.className = 'btn btn-outline btn-sm';
-                const newBtn = topButton.cloneNode(true);
-                topButton.parentNode.replaceChild(newBtn, topButton);
+        if (isAuthenticated) {
+            // Hide Login & Sign Up, show Logout
+            if (loginBtn) loginBtn.style.display = 'none';
+            if (signupBtn) signupBtn.style.display = 'none';
+            if (logoutBtn) {
+                logoutBtn.style.display = 'inline-flex';
+                logoutBtn.textContent = 'Logout';
+                logoutBtn.className = 'btn btn-outline btn-sm';
+                // Remove old listeners
+                const newBtn = logoutBtn.cloneNode(true);
+                logoutBtn.parentNode.replaceChild(newBtn, logoutBtn);
                 newBtn.addEventListener('click', async (e) => {
                     e.preventDefault();
                     await Auth.logout();
                 });
-            } else {
-                topButton.textContent = 'My Dashboard';
-                topButton.className = 'btn btn-primary btn-sm';
-                const newBtn = topButton.cloneNode(true);
-                topButton.parentNode.replaceChild(newBtn, topButton);
+            }
+        } else {
+            // Show Login & Sign Up, hide Logout
+            if (loginBtn) loginBtn.style.display = 'inline-flex';
+            if (signupBtn) signupBtn.style.display = 'inline-flex';
+            if (logoutBtn) {
+                logoutBtn.style.display = 'none';
+                logoutBtn.textContent = 'My Dashboard';
+                logoutBtn.className = 'btn btn-primary btn-sm';
+            }
+        }
+        
+        // Hero section - Try Demo button
+        const heroTryDemo = document.getElementById('heroRegister');
+        const heroMyDashboard = document.getElementById('heroMyDashboard');
+        
+        if (isAuthenticated) {
+            if (heroTryDemo) heroTryDemo.style.display = 'none';
+            if (heroMyDashboard) {
+                heroMyDashboard.style.display = 'inline-flex';
+                heroMyDashboard.textContent = 'My Dashboard';
+                heroMyDashboard.className = 'btn btn-primary';
+                const newBtn = heroMyDashboard.cloneNode(true);
+                heroMyDashboard.parentNode.replaceChild(newBtn, heroMyDashboard);
                 newBtn.addEventListener('click', (e) => {
                     e.preventDefault();
                     SiteController.unlockDashboard();
                 });
             }
+        } else {
+            if (heroTryDemo) heroTryDemo.style.display = 'inline-flex';
+            if (heroMyDashboard) heroMyDashboard.style.display = 'none';
         }
     },
 
     _wireReturningUserButtons() {
-        const goToDashboard = (e) => {
+        // Hero My Dashboard button
+        document.getElementById('heroMyDashboard')?.addEventListener('click', (e) => {
             e.preventDefault();
             this.unlockDashboard();
-        };
-        document.getElementById('myDashboardTrigger')?.addEventListener('click', goToDashboard);
-        document.getElementById('heroMyDashboard')?.addEventListener('click', goToDashboard);
+        });
     },
 
     // Opens one of the auth modals (login/register/verify/forgot/reset/demo)
