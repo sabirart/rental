@@ -1006,7 +1006,6 @@ const Tenants = {
                     document.execCommand('copy');
                     tempInput.remove();
                 }
-                showNotification('Number copied to clipboard', 'success');
             } catch (err) {
                 showNotification('Failed to copy number', 'error');
             }
