@@ -252,8 +252,27 @@
         }
     }
 
-// ===== GOOGLE LOGIN - FIXED VERSION =====
+// ===== GOOGLE LOGIN =====
+// Runs one of two flows depending on platform:
+//  - Native Android app (Capacitor): NativeAuth.googleSignIn() from native-auth.js,
+//    which uses Credential Manager and returns an ID token.
+//  - Browser (web): Google Identity Services popup (unchanged), returns an access token.
+// Both paths end up calling Auth.googleLogin(), which sends whichever token type
+// it received to the same backend endpoint.
 async function handleGoogleLogin() {
+    if (window.NativeAuth && window.NativeAuth.isNative()) {
+        try {
+            await window.NativeAuth.googleSignIn();
+            closeModal(loginModal);
+            closeModal(registerModal);
+            SiteController.unlockDashboard();
+        } catch (error) {
+            console.error('Native Google login error:', error);
+            alert('Google login failed: ' + (error.message || error));
+        }
+        return;
+    }
+
     try {
         // Load Google SDK
         if (typeof google === 'undefined') {
@@ -281,7 +300,7 @@ async function handleGoogleLogin() {
                 }
                 
                 try {
-                    const result = await Auth.googleLogin(response.access_token);
+                    const result = await Auth.googleLogin({ accessToken: response.access_token });
                     closeModal(loginModal);
                     closeModal(registerModal);
                     SiteController.unlockDashboard();
