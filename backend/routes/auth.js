@@ -43,7 +43,14 @@ router.post('/login', [
 ], authController.login);
 
 router.post('/google-login', [
-    body('token').notEmpty().withMessage('Google token is required'),
+    // Accept either a web access token (browser flow) or an idToken
+    // (native Android app flow) - authController validates whichever is sent.
+    body().custom((value, { req }) => {
+        if (!req.body.token && !req.body.idToken) {
+            throw new Error('Google token is required');
+        }
+        return true;
+    }),
     validate
 ], authController.googleLogin);
 
