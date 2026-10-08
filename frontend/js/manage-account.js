@@ -189,18 +189,14 @@
                 }
             };
 
-            if (typeof Components !== 'undefined' && Components.showConfirm) {
-                Components.showConfirm(
-                    'Delete Account?',
-                    'This permanently deletes your account and all of your properties, tenants, and payment records. This cannot be undone.',
-                    'Delete Permanently',
-                    'Cancel',
-                    'danger',
-                    doDelete
-                );
-            } else if (window.confirm('Permanently delete your account? This cannot be undone.')) {
-                await doDelete();
-            }
+            Components.showConfirm(
+                'Delete Account?',
+                'This permanently deletes your account and all of your properties, tenants, and payment records. This cannot be undone.',
+                'Delete Permanently',
+                'Cancel',
+                'danger',
+                doDelete
+            );
         });
     });
 

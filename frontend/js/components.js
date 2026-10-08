@@ -22,28 +22,34 @@ const Components = {
         const msgEl = document.createElement('p');
         msgEl.className = 'popup-message';
         msgEl.textContent = message;
+
+        const closeX = document.createElement('button');
+        closeX.className = 'popup-close-x';
+        closeX.setAttribute('aria-label', 'Close');
+        closeX.innerHTML = '&times;';
+        closeX.addEventListener('click', () => { this.closePopup(); if (onCancel) onCancel(); });
         
         const btnContainer = document.createElement('div');
         btnContainer.className = 'popup-buttons';
         
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'popup-btn popup-btn-cancel';
-        cancelBtn.textContent = cancelText;
-        cancelBtn.addEventListener('click', () => { this.closePopup(); if (onCancel) onCancel(); });
-        
+        // The top-right X is the dismissal/cancel action for confirmations.
+        // Do not add a redundant bottom Cancel button.
         const confirmBtn = document.createElement('button');
         confirmBtn.className = `popup-btn popup-btn-${confirmType}`;
         confirmBtn.textContent = confirmText;
         confirmBtn.addEventListener('click', () => { this.closePopup(); if (onConfirm) onConfirm(); });
         
-        btnContainer.appendChild(cancelBtn);
         btnContainer.appendChild(confirmBtn);
         
+        popup.appendChild(closeX);
         popup.appendChild(titleEl);
         popup.appendChild(msgEl);
         popup.appendChild(btnContainer);
         overlay.appendChild(popup);
         document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { this.closePopup(); if (onCancel) onCancel(); }
+        });
         
         this._popupActive = true;
         this._popupElement = overlay;
@@ -58,7 +64,6 @@ const Components = {
     
     showAlert(title, message, buttonText = 'OK', buttonType = 'primary', onClose, options = {}) {
         this.closePopup();
-        const { showCancel = false, cancelText = 'Cancel' } = options;
         
         const overlay = document.createElement('div');
         overlay.className = 'popup-overlay';
@@ -84,7 +89,7 @@ const Components = {
         msgEl.textContent = message;
         
         const btnContainer = document.createElement('div');
-        btnContainer.className = showCancel ? 'popup-buttons' : 'popup-buttons popup-buttons-single';
+        btnContainer.className = 'popup-buttons popup-buttons-single';
         
         const okBtn = document.createElement('button');
         okBtn.className = `popup-btn popup-btn-${buttonType}`;
@@ -92,13 +97,6 @@ const Components = {
         okBtn.addEventListener('click', () => { this.closePopup(); if (onClose) onClose(); });
         btnContainer.appendChild(okBtn);
         
-        if (showCancel) {
-            const cancelBtn = document.createElement('button');
-            cancelBtn.className = 'popup-btn popup-btn-cancel';
-            cancelBtn.textContent = cancelText;
-            cancelBtn.addEventListener('click', () => this.closePopup());
-            btnContainer.appendChild(cancelBtn);
-        }
         
         popup.appendChild(closeX);
         popup.appendChild(titleEl);

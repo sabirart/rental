@@ -126,8 +126,7 @@ const Recycle = {
                 'Please create an account or login to recover items.',
                 'Login',
                 'primary',
-                () => { SiteController.openAuthModal('login'); }
-            , { showCancel: true });
+                () => { SiteController.openAuthModal('login'); });
             return;
         }
         try {
@@ -169,8 +168,7 @@ const Recycle = {
                 'Please create an account or login to delete items.',
                 'Login',
                 'primary',
-                () => { SiteController.openAuthModal('login'); }
-            , { showCancel: true });
+                () => { SiteController.openAuthModal('login'); });
             return;
         }
         Components.showConfirm(
@@ -216,8 +214,7 @@ const Recycle = {
                 'Please create an account or login to clear items.',
                 'Login',
                 'primary',
-                () => { SiteController.openAuthModal('login'); }
-            , { showCancel: true });
+                () => { SiteController.openAuthModal('login'); });
             return;
         }
         Components.showConfirm(

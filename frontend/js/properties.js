@@ -849,11 +849,11 @@ const Properties = {
         if (this._isProcessing) return;
         
         const hasTenants = App.state.tenants.some(t => t.property_id === id);
-        if (hasTenants) {
-            if (!confirm('This property has tenants. Deleting it will remove their property assignment. Continue?')) return;
-        }
-        
-        Components.showConfirm('Delete Property', 'Are you sure you want to delete this property?', 'Delete', 'Cancel', 'danger', async () => {
+        const message = hasTenants
+            ? 'This property has tenants. Deleting it will remove their property assignment. Continue?'
+            : 'Are you sure you want to delete this property?';
+
+        Components.showConfirm('Delete Property', message, 'Delete', 'Cancel', 'danger', async () => {
             this._isProcessing = true;
             Components.showLoading('Deleting property...');
             
@@ -997,8 +997,7 @@ const Properties = {
                 'Please create an account or login to update rooms.',
                 'Login',
                 'primary',
-                () => { SiteController.openAuthModal('login'); }
-            , { showCancel: true });
+                () => { SiteController.openAuthModal('login'); });
             return;
         }
         
@@ -1042,8 +1041,7 @@ const Properties = {
                 'Please create an account or login to remove rooms.',
                 'Login',
                 'primary',
-                () => { SiteController.openAuthModal('login'); }
-            , { showCancel: true });
+                () => { SiteController.openAuthModal('login'); });
             return;
         }
         
@@ -1075,8 +1073,7 @@ const Properties = {
                 'Please create an account or login to add rooms.',
                 'Login',
                 'primary',
-                () => { SiteController.openAuthModal('login'); }
-            , { showCancel: true });
+                () => { SiteController.openAuthModal('login'); });
             return;
         }
         

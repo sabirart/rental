@@ -268,7 +268,7 @@ async function handleGoogleLogin() {
             SiteController.unlockDashboard();
         } catch (error) {
             console.error('Native Google login error:', error);
-            alert('Google login failed: ' + (error.message || error));
+            Components.showError('Google Sign-In Failed', error.message || 'Google sign-in failed. Please try again.');
         }
         return;
     }
@@ -295,7 +295,7 @@ async function handleGoogleLogin() {
             scope: 'email profile',
             callback: async (response) => {
                 if (response.error) {
-                    alert('Google login failed: ' + response.error);
+                    Components.showError('Google Sign-In Failed', response.error || 'Google sign-in failed. Please try again.');
                     return;
                 }
                 
@@ -305,7 +305,7 @@ async function handleGoogleLogin() {
                     closeModal(registerModal);
                     SiteController.unlockDashboard();
                 } catch (error) {
-                    alert('Login failed: ' + error.message);
+                    Components.showError('Login Failed', error.message || 'Unable to sign in. Please try again.');
                 }
             }
         });
@@ -313,7 +313,7 @@ async function handleGoogleLogin() {
         client.requestAccessToken();
     } catch (error) {
         console.error('Google login error:', error);
-        alert('Failed to initialize Google login');
+        Components.showError('Google Sign-In Unavailable', 'Google sign-in could not be initialized. Please try again.');
     }
 }
 

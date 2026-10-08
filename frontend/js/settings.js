@@ -507,8 +507,7 @@ const Settings = {
                         'Please create an account or login to manage the recycle bin.',
                         'Login',
                         'primary',
-                        () => { SiteController.openAuthModal('login'); }
-                    , { showCancel: true });
+                        () => { SiteController.openAuthModal('login'); });
                     return;
                 }
                 try {
