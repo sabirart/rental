@@ -328,23 +328,12 @@ const Settings = {
             exportedAt: new Date().toISOString(),
             version: '1.0.0'
         };
-        const filename = `rental_data_${new Date().toISOString().split('T')[0]}.json`;
-
-        if (window.NativeExport && window.NativeExport.isNative()) {
-            window.NativeExport.downloadJson(filename, data)
-                .then(() => showNotification('Data exported successfully', 'success'))
-                .catch(err => {
-                    console.error('Native export failed:', err);
-                    showNotification('Could not export data: ' + (err.message || err), 'error');
-                });
-            return;
-        }
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
+        a.download = `rental_data_${new Date().toISOString().split('T')[0]}.json`;
         a.click();
         URL.revokeObjectURL(url);
         showNotification('Data exported successfully', 'success');

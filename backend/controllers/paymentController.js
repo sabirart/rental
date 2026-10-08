@@ -43,12 +43,25 @@ const paymentController = {
             if (existing.length > 0) throw new AppError('Payment already exists for this tenant for this month/year', 400);
             
             const totalPayment = (data.monthlyRent || 0) + (data.electricity || 0) + (data.gas || 0) + (data.previousDues || 0);
+
+            if (data.amountPaid !== undefined && data.amountPaid !== null && data.amountPaid !== '') {
+                if (Number(data.amountPaid) < 0) throw new AppError('Amount paid cannot be negative', 400);
+                if (Number(data.amountPaid) > totalPayment) throw new AppError('Amount paid cannot be greater than the total amount due', 400);
+            }
             
-            const payment = await Payment.create({
-                id: generateId(),
-                ...data,
-                totalPayment
-            }, req.userId);
+            let payment;
+            try {
+                payment = await Payment.create({
+                    id: generateId(),
+                    ...data,
+                    totalPayment
+                }, req.userId);
+            } catch (modelError) {
+                // Payment.create throws plain Errors for amount/status
+                // consistency problems (e.g. "partial" with no amount) -
+                // surface those as a normal 400 instead of a generic 500.
+                throw new AppError(modelError.message, 400);
+            }
             
             res.status(201).json({ success: true, data: payment, message: 'Payment recorded successfully' });
         } catch (error) {
@@ -74,8 +87,18 @@ const paymentController = {
             if (duplicates.some(p => p.id !== id)) throw new AppError('Payment already exists for this tenant for this month/year', 400);
             
             const totalPayment = (data.monthlyRent || 0) + (data.electricity || 0) + (data.gas || 0) + (data.previousDues || 0);
+
+            if (data.amountPaid !== undefined && data.amountPaid !== null && data.amountPaid !== '') {
+                if (Number(data.amountPaid) < 0) throw new AppError('Amount paid cannot be negative', 400);
+                if (Number(data.amountPaid) > totalPayment) throw new AppError('Amount paid cannot be greater than the total amount due', 400);
+            }
             
-            const payment = await Payment.update(id, { ...data, totalPayment }, req.userId);
+            let payment;
+            try {
+                payment = await Payment.update(id, { ...data, totalPayment }, req.userId);
+            } catch (modelError) {
+                throw new AppError(modelError.message, 400);
+            }
             
             res.json({ success: true, data: payment, message: 'Payment updated successfully' });
         } catch (error) {
@@ -90,6 +113,15 @@ const paymentController = {
             if (!existing) throw new AppError('Payment not found', 404);
             await Payment.delete(id, req.userId);
             res.json({ success: true, message: 'Payment deleted successfully' });
+        } catch (error) {
+            next(error);
+        }
+    },
+
+    async clearAll(req, res, next) {
+        try {
+            await Payment.clearAll(req.userId);
+            res.json({ success: true, message: 'All payments cleared successfully' });
         } catch (error) {
             next(error);
         }

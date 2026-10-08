@@ -40,12 +40,17 @@ const recycleController = {
     async recover(req, res, next) {
         try {
             const { id } = req.params;
-            const item = await RecycleBin.recover(id, req.userId);
+            const { item, warnings } = await RecycleBin.recover(id, req.userId);
+            
+            const message = warnings && warnings.length > 0
+                ? `${item.type} recovered with changes: ${warnings.join(' ')}`
+                : `${item.type} recovered successfully`;
             
             res.json({
                 success: true,
                 data: item,
-                message: `${item.type} recovered successfully`
+                warnings: warnings || [],
+                message
             });
         } catch (error) {
             next(error);

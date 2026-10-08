@@ -411,6 +411,11 @@ const Tenants = {
         ];
         (payment.custom_charges || []).forEach(c => rows.push([c.label || 'Other Charge', c.amount || 0]));
 
+        const amountPaid = payment.status === 'paid' ? (payment.total_payment || 0)
+            : payment.status === 'unpaid' ? 0
+            : (payment.amount_paid || 0);
+        const remaining = Math.max(0, (payment.total_payment || 0) - amountPaid);
+
         win.document.write(`
             <html>
             <head>
@@ -433,6 +438,10 @@ const Tenants = {
                 <table>
                     ${rows.map(([label, amt]) => `<tr><td>${escapeHTML(String(label))}</td><td>${formatCurrency(amt || 0)}</td></tr>`).join('')}
                     <tr class="total-row"><td>Total</td><td>${formatCurrency(payment.total_payment || 0)}</td></tr>
+                    ${payment.status === 'partial' ? `
+                    <tr><td>Amount Received</td><td>${formatCurrency(amountPaid)}</td></tr>
+                    <tr><td>Remaining Balance</td><td>${formatCurrency(remaining)}</td></tr>
+                    ` : ''}
                 </table>
                 <span class="status">${escapeHTML(payment.status || 'unpaid')}</span>
             </body>
@@ -654,6 +663,12 @@ const Tenants = {
                         <div><span style="color: var(--text-light);">Gas:</span> <span style="color: var(--text); font-weight: 450;">${formatCurrency(payment.gas || 0)}</span></div>
                         <div><span style="color: var(--text-light);">Dues:</span> <span style="color: var(--text); font-weight: 450;">${formatCurrency(payment.previous_dues || 0)}</span></div>
                     </div>
+                    ${payment.status === 'partial' ? `
+                    <div style="font-size: 0.8rem; padding-top: 6px; margin-top: 6px; border-top: 1px solid var(--border-light);">
+                        <span style="color: var(--text-light);">Received:</span> <span style="font-weight: 450;">${formatCurrency(payment.amount_paid || 0)}</span>
+                        <span style="margin-left: 12px; color: var(--text-light);">Remaining:</span> <span style="font-weight: 600;">${formatCurrency(Math.max(0, (payment.total_payment || 0) - (payment.amount_paid || 0)))}</span>
+                    </div>
+                    ` : ''}
                     ${payment.notes ? `<div style="font-size: 0.75rem; color: var(--text-lighter); margin-top: 6px; padding-top: 4px; border-top: 1px solid var(--border-light);">${escapeHTML(payment.notes)}</div>` : ''}
                 </div>
             `;
@@ -1132,7 +1147,7 @@ const Tenants = {
                 <div class="settings-form-group">
                     <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Upload Documents</label>
                     <input type="file" class="form-control" id="tenantDocuments" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif" multiple>
-                    <small style="color: var(--text-light); font-size: 0.7rem; display: block; margin-top: 4px;">Upload PDF, DOC, DOCX, or Images (Max 5 files, 5MB each)</small>
+                    <small style="color: var(--text-light); font-size: 0.7rem; display: block; margin-top: 4px;">Upload PDF, DOC, DOCX, or Images (Max 5 files, 5MB each, ${MAX_TOTAL_UPLOAD_MB}MB combined with profile picture)</small>
                 </div>
 
                 <div class="settings-form-actions" style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border-light); margin-top: 4px;">
@@ -1324,6 +1339,11 @@ const Tenants = {
                 Components.showError(`"${documentFiles[i].name}" is too large. Each document must be under 5MB.`);
                 return;
             }
+        }
+        
+        if (!validateTotalUploadSize(profilePicFile, documentFiles)) {
+            Components.showError(`The profile picture and documents together are too large (max ${MAX_TOTAL_UPLOAD_MB}MB combined). Please remove or shrink some files.`);
+            return;
         }
         
         this._isProcessing = true;
@@ -1643,7 +1663,7 @@ const Tenants = {
                 <div class="settings-form-group">
                     <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Upload New Documents</label>
                     <input type="file" class="form-control" id="tenantDocuments" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif" multiple>
-                    <small style="color: var(--text-light); font-size: 0.7rem; display: block; margin-top: 4px;">Current documents: ${docCount} file(s). Upload to add more. (Max 5MB each)</small>
+                    <small style="color: var(--text-light); font-size: 0.7rem; display: block; margin-top: 4px;">Current documents: ${docCount} file(s). Upload to add more. (Max 5MB each, ${MAX_TOTAL_UPLOAD_MB}MB combined total)</small>
                 </div>
                 
                 ${docCount > 0 ? `
@@ -1830,7 +1850,8 @@ const Tenants = {
             }
         }
         
-        const currentDocCount = App.state.tenants.find(t => t.id === id)?.documents?.length || 0;
+        const currentDocs = App.state.tenants.find(t => t.id === id)?.documents || [];
+        const currentDocCount = currentDocs.length;
         if (documentFiles.length + currentDocCount > 10) {
             Components.showError('You can upload a maximum of 10 documents per tenant.');
             return;
@@ -1841,6 +1862,12 @@ const Tenants = {
                 Components.showError(`"${documentFiles[i].name}" is too large. Each document must be under 5MB.`);
                 return;
             }
+        }
+        
+        const existingDocsBytes = currentDocs.reduce((sum, d) => sum + (d && d.size ? d.size : 0), 0);
+        if (!validateTotalUploadSize(profilePicFile, documentFiles, existingDocsBytes)) {
+            Components.showError(`The profile picture and documents together are too large (max ${MAX_TOTAL_UPLOAD_MB}MB combined, including documents already saved). Please remove some existing documents or shrink the new files.`);
+            return;
         }
         
         this._isProcessing = true;

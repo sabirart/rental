@@ -32,6 +32,7 @@ const validatePayment = [
     body('monthlyRent').notEmpty().withMessage('Monthly rent is required').isFloat({ min: 0 }).withMessage('Monthly rent must be a positive number').toFloat(),
     body('electricityGas').optional().isFloat({ min: 0 }).withMessage('Electricity/Gas must be a positive number').toFloat(),
     body('previousDues').optional().isFloat({ min: 0 }).withMessage('Previous dues must be a positive number').toFloat(),
+    body('amountPaid').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Amount paid must be a positive number').toFloat(),
     body('status').optional().isIn(['paid', 'partial', 'unpaid']).withMessage('Status must be paid, partial, or unpaid').trim(),
     body('notes').optional().isLength({ max: 500 }).withMessage('Notes cannot exceed 500 characters').trim().escape()
 ];

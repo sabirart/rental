@@ -104,6 +104,7 @@ const SAMPLE_DATA = {
             gas: 1500,
             previous_dues: 0,
             total_payment: 29500,
+            amount_paid: 29500,
             status: 'paid',
             notes: 'Paid on time',
             created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
@@ -118,6 +119,7 @@ const SAMPLE_DATA = {
             gas: 1200,
             previous_dues: 0,
             total_payment: 28700,
+            amount_paid: 28700,
             status: 'paid',
             notes: '',
             created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
@@ -132,7 +134,8 @@ const SAMPLE_DATA = {
             gas: 1000,
             previous_dues: 500,
             total_payment: 21500,
-            status: 'unpaid',
+            amount_paid: 12000,
+            status: 'partial',
             notes: 'Partial payment received',
             created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
         }

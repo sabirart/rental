@@ -1,11 +1,12 @@
-const { query, get, run } = require('../config/database');
+const database = require('../config/database');
+const { query, get, run, transaction } = database;
 
 class RecycleBin {
-    static async addTenant(tenantData, userId) {
+    static async addTenant(tenantData, userId, db = database) {
         try {
             const { id, name, father_name, cnic, location, description, property_id, room_number, status, profile_pic, documents, mobile_number, advance_payment, lease_end_date } = tenantData;
             
-            await run(
+            await db.run(
                 `INSERT INTO recycle_bin (id, user_id, original_id, type, data, deleted_at)
                  VALUES (?, ?, ?, ?, ?, ?)`,
                 [Date.now().toString(36) + Math.random().toString(36).substr(2, 5), userId, id, 'tenant', 
@@ -18,15 +19,29 @@ class RecycleBin {
         }
     }
 
-    static async addProperty(propertyData, userId) {
+    // `rooms` is an optional snapshot of the property's rooms at the moment
+    // of deletion (each { room_number, room_name, status, rent_amount };
+    // tenant_id is deliberately NOT carried over - a recovered property's
+    // rooms always come back "available", since the tenant(s) that once
+    // occupied them are recovered/reassigned independently). Without this,
+    // recovering a deleted property brought the property row back but not
+    // its rooms (they're cascade-deleted with the property), silently
+    // losing all room data.
+    static async addProperty(propertyData, userId, rooms = []) {
         try {
             const { id, name, address, total_rooms, base_rent, status, description } = propertyData;
+            const roomsSnapshot = (rooms || []).map(r => ({
+                room_number: r.room_number,
+                room_name: r.room_name,
+                status: r.status === 'occupied' ? 'available' : r.status, // never restore as pre-occupied; occupancy is re-derived from tenant recovery
+                rent_amount: r.rent_amount
+            }));
             
             await run(
                 `INSERT INTO recycle_bin (id, user_id, original_id, type, data, deleted_at)
                  VALUES (?, ?, ?, ?, ?, ?)`,
                 [Date.now().toString(36) + Math.random().toString(36).substr(2, 5), userId, id, 'property',
-                 JSON.stringify({ name, address, total_rooms, base_rent, status, description }),
+                 JSON.stringify({ name, address, total_rooms, base_rent, status, description, rooms: roomsSnapshot }),
                  new Date().toISOString()]
             );
         } catch (error) {
@@ -62,11 +77,11 @@ class RecycleBin {
         }
     }
 
-    static async getById(id, userId) {
+    static async getById(id, userId, db = database) {
         try {
             const params = userId ? [id, userId] : [id];
             const userClause = userId ? 'AND user_id = ?' : '';
-            const result = await get(`SELECT * FROM recycle_bin WHERE id = ? ${userClause}`, params);
+            const result = await db.get(`SELECT * FROM recycle_bin WHERE id = ? ${userClause}`, params);
             if (result && result.data) {
                 try {
                     result.data = JSON.parse(result.data);
@@ -81,36 +96,127 @@ class RecycleBin {
         }
     }
 
+    // Recovers a soft-deleted tenant or property. Everything below runs in a
+    // single transaction so the recycle_bin row is only removed once the
+    // recovered row (and, for tenants, the matching room state) has actually
+    // been written - a failure partway through leaves the original
+    // recycle_bin entry intact instead of losing the data.
+    //
+    // Returns { item, warnings } - `warnings` is a list of human-readable
+    // strings describing anything that couldn't be fully restored (e.g. the
+    // original room was reassigned to someone else in the meantime), so the
+    // caller can surface that to the landlord instead of silently
+    // reassigning/overwriting another tenant's room.
     static async recover(id, userId) {
         try {
-            const item = await this.getById(id, userId);
-            if (!item) {
-                throw new Error('Item not found in recycle bin');
-            }
+            return await transaction(async (db) => {
+                const item = await this.getById(id, userId, db);
+                if (!item) {
+                    throw new Error('Item not found in recycle bin');
+                }
 
-            if (item.type === 'tenant') {
-                const tenantData = item.data;
-                await run(
-                    `INSERT INTO tenants (id, user_id, name, father_name, cnic, location, description, property_id, room_number, status, profile_pic, documents, mobile_number, advance_payment, lease_end_date)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [item.original_id, userId, tenantData.name, tenantData.father_name, tenantData.cnic, 
-                     tenantData.location, tenantData.description, tenantData.property_id, 
-                     tenantData.room_number, tenantData.status, tenantData.profile_pic, 
-                     JSON.stringify(tenantData.documents || []), tenantData.mobile_number || null, tenantData.advance_payment || 0, tenantData.lease_end_date || null]
-                );
-            } else if (item.type === 'property') {
-                const propertyData = item.data;
-                await run(
-                    `INSERT INTO properties (id, user_id, name, address, total_rooms, base_rent, status, description)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [item.original_id, userId, propertyData.name, propertyData.address, 
-                     propertyData.total_rooms, propertyData.base_rent, 
-                     propertyData.status, propertyData.description]
-                );
-            }
+                const warnings = [];
 
-            await run('DELETE FROM recycle_bin WHERE id = ? AND user_id = ?', [id, userId]);
-            return item;
+                if (item.type === 'tenant') {
+                    const tenantData = item.data;
+
+                    // CNIC must still be unique for this landlord. Unlike a
+                    // room conflict, a CNIC conflict is identity data we
+                    // cannot safely alter or drop - so recovery is blocked
+                    // outright rather than silently changing it.
+                    const cnicConflict = await db.get(
+                        'SELECT id, name FROM tenants WHERE cnic = ? AND user_id = ?',
+                        [tenantData.cnic, userId]
+                    );
+                    if (cnicConflict) {
+                        throw new Error(`Cannot recover: a tenant named "${cnicConflict.name}" already has this CNIC. Resolve that conflict before recovering.`);
+                    }
+
+                    let propertyId = tenantData.property_id;
+                    let roomNumber = tenantData.room_number;
+                    let room = null;
+
+                    if (propertyId) {
+                        const property = await db.get(
+                            'SELECT * FROM properties WHERE id = ? AND user_id = ?',
+                            [propertyId, userId]
+                        );
+                        if (!property) {
+                            warnings.push('The property this tenant was assigned to no longer exists, so the room assignment was cleared.');
+                            propertyId = null;
+                            roomNumber = null;
+                        } else {
+                            room = await db.get(
+                                'SELECT * FROM rooms WHERE property_id = ? AND room_number = ?',
+                                [propertyId, roomNumber]
+                            );
+                            if (!room) {
+                                warnings.push('The original room no longer exists, so the room assignment was cleared.');
+                                propertyId = null;
+                                roomNumber = null;
+                            } else if (room.status === 'occupied' && room.tenant_id && room.tenant_id !== item.original_id) {
+                                warnings.push('The original room is now occupied by another tenant, so this tenant was recovered without a room assignment. Reassign them to a room manually.');
+                                propertyId = null;
+                                roomNumber = null;
+                                room = null;
+                            }
+                        }
+                    }
+
+                    await db.run(
+                        `INSERT INTO tenants (id, user_id, name, father_name, cnic, location, description, property_id, room_number, status, profile_pic, documents, mobile_number, advance_payment, lease_end_date)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [item.original_id, userId, tenantData.name, tenantData.father_name, tenantData.cnic,
+                         tenantData.location, tenantData.description, propertyId, roomNumber,
+                         tenantData.status, tenantData.profile_pic,
+                         JSON.stringify(tenantData.documents || []), tenantData.mobile_number || null, tenantData.advance_payment || 0, tenantData.lease_end_date || null]
+                    );
+
+                    // Keep the rooms table in sync with the recovered tenant
+                    // - this is the step the old recovery path skipped
+                    // entirely, which is what let a room look "available"
+                    // while an active tenant was actually assigned to it.
+                    if (propertyId && roomNumber && room) {
+                        await db.run(
+                            `UPDATE rooms SET status = 'occupied', tenant_id = ? WHERE property_id = ? AND room_number = ?`,
+                            [item.original_id, propertyId, roomNumber]
+                        );
+                    }
+                } else if (item.type === 'property') {
+                    const propertyData = item.data;
+                    await db.run(
+                        `INSERT INTO properties (id, user_id, name, address, total_rooms, base_rent, status, description)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [item.original_id, userId, propertyData.name, propertyData.address,
+                         propertyData.total_rooms, propertyData.base_rent,
+                         propertyData.status, propertyData.description]
+                    );
+
+                    const rooms = Array.isArray(propertyData.rooms) ? propertyData.rooms : [];
+                    for (const r of rooms) {
+                        await db.run(
+                            `INSERT INTO rooms (property_id, room_number, room_name, status, rent_amount) VALUES (?, ?, ?, ?, ?)`,
+                            [item.original_id, r.room_number, r.room_name, r.status || 'available', r.rent_amount]
+                        );
+                    }
+                    if (rooms.length === 0 && propertyData.total_rooms) {
+                        // Very old recycle_bin entries (deleted before rooms
+                        // were snapshotted) won't have a rooms array - fall
+                        // back to regenerating plain available rooms so the
+                        // property isn't recovered with zero rooms.
+                        for (let i = 1; i <= propertyData.total_rooms; i++) {
+                            await db.run(
+                                `INSERT INTO rooms (property_id, room_number, room_name, status, rent_amount) VALUES (?, ?, ?, ?, ?)`,
+                                [item.original_id, i, `Room ${i}`, 'available', propertyData.base_rent]
+                            );
+                        }
+                        warnings.push('This property was deleted before room details were saved, so its rooms were recreated as available.');
+                    }
+                }
+
+                await db.run('DELETE FROM recycle_bin WHERE id = ? AND user_id = ?', [id, userId]);
+                return { item, warnings };
+            });
         } catch (error) {
             console.error('Error in RecycleBin.recover:', error.message);
             throw error;

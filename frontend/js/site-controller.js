@@ -117,11 +117,14 @@ const SiteController = {
         const id = modalMap[type] || type;
         const modal = document.getElementById(id);
         if (modal) {
+            if (window.closeAllOverlays) window.closeAllOverlays(modal.id);
             document.querySelectorAll('.modal-overlay.active').forEach((other) => {
                 if (other !== modal) other.classList.remove('active');
             });
             modal.classList.add('active');
             document.body.style.overflow = 'hidden';
+            modal.setAttribute('aria-hidden', 'false');
+            modal.querySelector('.close')?.focus({ preventScroll: true });
         }
     },
 
@@ -139,7 +142,12 @@ const SiteController = {
         const modal = document.getElementById(id);
         if (modal) {
             modal.classList.remove('active');
-            document.body.style.overflow = '';
+            modal.setAttribute('aria-hidden', 'true');
+        }
+        if (window.App && typeof App._syncOverlayScrollLock === 'function') {
+            App._syncOverlayScrollLock();
+        } else {
+            document.body.style.overflow = document.querySelector('.modal-overlay.active') ? 'hidden' : '';
         }
     },
 
@@ -176,6 +184,25 @@ const SiteController = {
 
 document.addEventListener('DOMContentLoaded', () => {
     SiteController.init();
+
+    // One reliable close path for every auth/manage-account overlay.
+    document.querySelectorAll('#authModalsRoot .modal-overlay').forEach((modal) => {
+        modal.setAttribute('aria-hidden', modal.classList.contains('active') ? 'false' : 'true');
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) SiteController.closeAuthModal(modal.id);
+        });
+        modal.querySelector('.close')?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            SiteController.closeAuthModal(modal.id);
+        });
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const openModal = document.querySelector('#authModalsRoot .modal-overlay.active');
+        if (openModal) SiteController.closeAuthModal(openModal.id);
+    });
 });
 
 window.SiteController = SiteController;

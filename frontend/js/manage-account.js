@@ -32,6 +32,20 @@
         $('manageAccountName').value = user.name || '';
         $('manageAccountEmailField').value = user.email || '';
 
+        const avatar = $('manageAccountAvatar');
+        if (avatar) {
+            const fallback = (user.name || user.email || 'U').charAt(0).toUpperCase();
+            avatar.innerHTML = user.profilePic
+                ? `<img src="${escapeHTML(user.profilePic)}" alt="${escapeHTML(user.name || 'Profile')}" referrerpolicy="no-referrer" onerror="this.remove(); this.parentElement.textContent='${escapeHTML(fallback)}';">`
+                : escapeHTML(fallback);
+            avatar.classList.toggle('has-image', !!user.profilePic);
+        }
+        const provider = $('manageAccountProvider');
+        if (provider) {
+            provider.textContent = user.googleId ? 'Signed in with Google' : 'Email account';
+            provider.className = `manage-account-provider ${user.googleId ? 'google' : ''}`;
+        }
+
         ['manageAccountDetailsError', 'manageAccountDetailsSuccess', 'manageAccountPasswordError',
          'manageAccountPasswordSuccess', 'manageAccountDeleteError'].forEach(id => hideMsg($(id)));
 
