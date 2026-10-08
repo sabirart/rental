@@ -1749,6 +1749,23 @@ const Tenants = {
         `;
         
         App.openModal('Edit Tenant', form);
+
+        // Bind document X buttons after the edit form is inserted. The edit
+        // form is rendered dynamically, so a listener attached during the
+        // initial page load cannot catch these buttons.
+        setTimeout(() => {
+            const tenantForm = document.getElementById('tenantForm');
+            if (tenantForm && !tenantForm.dataset.removeDocBound) {
+                tenantForm.dataset.removeDocBound = '1';
+                tenantForm.addEventListener('click', (event) => {
+                    const btn = event.target.closest('.tenant-remove-document-btn');
+                    if (!btn || !tenantForm.contains(btn)) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.removeDocument(btn.dataset.tenantId, Number(btn.dataset.documentIndex));
+                });
+            }
+        }, 0);
         
         setTimeout(async () => {
             document.querySelectorAll('#tenantForm input[type="number"]').forEach(input => {
@@ -2040,50 +2057,50 @@ const Tenants = {
     },
     
     async removeDocument(tenantId, docIndex) {
-        Components.showConfirm(
-            'Remove Document',
-            'Are you sure you want to remove this document?',
-            'Remove',
-            'Cancel',
-            'danger',
-            async () => {
-                try {
-                    const tenant = App.state.tenants.find(t => t.id === tenantId);
-                    if (!tenant) return;
-                    
-                    const documents = Array.isArray(tenant.documents) ? [...tenant.documents] : [];
-                    if (docIndex < 0 || docIndex >= documents.length) {
-                        throw new Error('Document no longer exists. Please reopen the tenant editor.');
-                    }
-                    documents.splice(docIndex, 1);
-                    
-                    if (isDemoMode()) {
-                        tenant.documents = documents;
-                        updateDemoRecord('tenants', tenantId, { documents });
-                        await App.loadData();
-                    } else {
-                        await API.updateTenant(tenantId, {
-                            name: tenant.name,
-                            fatherName: tenant.father_name,
-                            cnic: tenant.cnic,
-                            location: tenant.location,
-                            description: tenant.description || '',
-                            propertyId: tenant.property_id,
-                            roomNumber: tenant.room_number,
-                            status: tenant.status || 'active',
-                            profile_pic: tenant.profile_pic || null,
-                            documents: documents
-                        });
-                        await App.loadData();
-                    }
-                    await this.editTenant(tenantId);
-                    showNotification('Document removed successfully', 'success');
-                } catch (error) {
-                    console.error('Error removing document:', error);
-                    Components.showError(error.message || 'Failed to remove document');
-                }
+        try {
+            const tenant = App.state.tenants.find(t => t.id === tenantId);
+            if (!tenant) throw new Error('Tenant not found');
+
+            const documents = Array.isArray(tenant.documents) ? [...tenant.documents] : [];
+            if (docIndex < 0 || docIndex >= documents.length) {
+                throw new Error('Document no longer exists. Please reopen the tenant editor.');
             }
-        );
+
+            // Remove the document from the actual tenant record, not just the
+            // visible chip. Persist it immediately so reopening the editor or
+            // reloading the app cannot bring the document back.
+            documents.splice(docIndex, 1);
+
+            if (isDemoMode()) {
+                updateDemoRecord('tenants', tenantId, { documents });
+                tenant.documents = documents;
+                await App.loadData();
+            } else {
+                await API.updateTenant(tenantId, {
+                    name: tenant.name,
+                    fatherName: tenant.father_name,
+                    cnic: tenant.cnic,
+                    location: tenant.location,
+                    description: tenant.description || '',
+                    propertyId: tenant.property_id,
+                    roomNumber: tenant.room_number,
+                    status: tenant.status || 'active',
+                    mobileNumber: tenant.mobile_number || null,
+                    advancePayment: tenant.advance_payment || 0,
+                    leaseEndDate: tenant.lease_end_date || null,
+                    profile_pic: tenant.profile_pic || null,
+                    documents
+                });
+                await App.loadData();
+            }
+
+            // Re-open the editor with the freshly persisted document list.
+            await this.editTenant(tenantId);
+            showNotification('Document removed', 'success');
+        } catch (error) {
+            console.error('Error removing document:', error);
+            Components.showError(error.message || 'Failed to remove document');
+        }
     },
     
     async viewDocuments(tenantId) {

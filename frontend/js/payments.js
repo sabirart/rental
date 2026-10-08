@@ -620,14 +620,38 @@ const Payments = {
 
     exportCurrentPayment() {
         const id = document.getElementById('paymentId')?.value;
+        const fields = this.getFormFields();
         const payment = (App.state.payments || []).find(p => p.id === id);
         if (!payment) {
             showNotification('Payment not found', 'error');
             return;
         }
-        if (typeof DataIO !== 'undefined' && DataIO.downloadPaymentsCsv) {
-            DataIO.downloadPaymentsCsv([payment], App.state.tenants || []);
-            showNotification('Export downloaded', 'success');
+
+        // Export the same tenant-facing PDF receipt already used elsewhere in
+        // the app. Build it from the current edit fields so the receipt reflects
+        // unsaved changes made in the editor.
+        const totalPayment = fields.rent + fields.electricity + fields.gas + fields.dues;
+        const amountPaid = this.resolveAmountPaid(fields.status, totalPayment, fields.amountPaid);
+        const receiptPayment = {
+            ...payment,
+            tenant_id: fields.tenantId,
+            month: fields.month,
+            year: fields.year,
+            monthly_rent: fields.rent,
+            electricity: fields.electricity,
+            gas: fields.gas,
+            previous_dues: fields.dues,
+            total_payment: totalPayment,
+            amount_paid: amountPaid,
+            status: fields.status,
+            notes: fields.notes
+        };
+        const tenant = (App.state.tenants || []).find(t => t.id === fields.tenantId);
+
+        if (typeof DataIO !== 'undefined' && typeof DataIO.generateReceipt === 'function') {
+            DataIO.generateReceipt(receiptPayment, tenant);
+        } else {
+            showNotification('Receipt unavailable', 'error');
         }
     },
     async updatePayment() {
