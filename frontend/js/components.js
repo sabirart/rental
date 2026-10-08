@@ -159,19 +159,32 @@ const Components = {
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
         const colors = { success: '#28a745', error: '#dc3545', warning: '#ffc107', info: '#17a2b8' };
+        const shortToast = {
+            'Tenant updated successfully': 'Tenant updated',
+            'Tenant added successfully': 'Tenant added',
+            'Payment updated successfully': 'Payment updated',
+            'Payment added successfully': 'Payment added',
+            'Document removed successfully': 'Document removed',
+            'Month export downloaded': 'Export downloaded',
+            'Data exported successfully': 'Data exported',
+            'Imported successfully': 'Import complete'
+        };
+        const cleanMessage = shortToast[message] || String(message).trim().split(/\s+/).slice(0, 2).join(' ');
         toast.style.cssText = `
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
-            padding: 12px 24px; border-radius: 8px; background: ${colors[type] || '#1a1a1a'};
-            color: ${type === 'warning' ? '#1a1a1a' : '#fff'}; z-index: 99999;
-            max-width: 400px; text-align: center; font-size: 0.875rem;
-            animation: slideUp 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            position: fixed; top: calc(var(--safe-top, 0px) + 16px); left: 50%;
+            transform: translateX(-50%); padding: 10px 16px; border-radius: 8px;
+            background: ${colors[type] || '#1a1a1a'}; color: ${type === 'warning' ? '#1a1a1a' : '#fff'};
+            z-index: 99999; max-width: min(320px, calc(100vw - 32px));
+            text-align: center; font-size: 0.8rem; line-height: 1.2; white-space: nowrap;
+            animation: toastDrop 0.22s ease-out; box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            pointer-events: none;
         `;
-        toast.textContent = message;
+        toast.textContent = cleanMessage;
         document.body.appendChild(toast);
         setTimeout(() => {
             toast.style.opacity = '0';
-            toast.style.transition = 'opacity 0.3s ease';
-            setTimeout(() => { if (toast.parentNode) toast.remove(); }, 300);
+            toast.style.transition = 'opacity 0.2s ease';
+            setTimeout(() => { if (toast.parentNode) toast.remove(); }, 200);
         }, duration);
     }
 };

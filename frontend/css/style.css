@@ -506,3 +506,178 @@ body.dark-mode .notif-item.notif-urgent{background:#3a1f1f}
 .property-card{height:300px;min-height:300px;max-height:300px}
 @media(max-width:1100px) and (min-width:769px){.properties-grid{grid-auto-rows:300px}}
 @media(max-width:768px){.properties-grid{grid-auto-rows:300px}.property-card{height:300px;min-height:300px;max-height:300px}}
+
+/* ===== Small UI consistency fixes ===== */
+/* Buttons and action links should never show browser underlines. */
+.btn, .btn:hover, .btn:focus, .action-btn, .action-btn:hover, .action-btn:focus,
+.dropdown-item, .dropdown-item:hover, .dropdown-item:focus, .tenant-contact-link,
+.tenant-contact-link:hover, .tenant-contact-link:focus, a[download], a[download]:hover,
+button { text-decoration: none !important; }
+
+/* Top-bar notification icon: clean transparent base with a soft hover. */
+.notif-bell-btn { background: transparent; border: 0; box-shadow: none; }
+.notif-bell-btn:hover, .notif-bell-btn:focus-visible {
+    background: rgba(255,255,255,0.55);
+    color: var(--text);
+    outline: none;
+}
+.notif-bell-btn:active { background: rgba(255,255,255,0.7); }
+
+/* Softer dashboard card hover, matching the top-bar icon treatment. */
+.stat-card:hover, .ratio-card:hover {
+    background: rgba(255,255,255,0.58);
+    border-color: rgba(219,219,216,0.8);
+}
+
+/* Compact, consistent select styling across filters and overlays. */
+select.form-control, .filter-select, .settings-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: var(--bg-white);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b6b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 12px 12px;
+    padding-right: 30px !important;
+}
+.filter-select { min-width: 0; width: max-content; }
+select.form-control:focus, .filter-select:focus, .settings-select:focus {
+    outline: none;
+}
+
+/* Notification items are real actions, not static text. */
+.notif-item { cursor: pointer; transition: background 0.15s ease, transform 0.1s ease; }
+.notif-item:hover { background: rgba(255,255,255,0.72); }
+.notif-item:active { transform: scale(0.995); }
+body.dark-mode .notif-item:hover { background: rgba(255,255,255,0.06); }
+
+/* Keep floating hover information above table rows and other clipped content. */
+.floating-info-tooltip {
+    position: fixed !important;
+    z-index: 2147483000 !important;
+    max-width: min(360px, calc(100vw - 24px));
+    pointer-events: none;
+}
+
+/* Prevent table cells from creating a clipping context for hover details. */
+.data-table td, .data-table th { overflow: visible; }
+
+/* Keep Dashboard and Settings aligned to the same content canvas as the main data sections. */
+#dashboard, #settings { width: 100%; max-width: none; }
+#dashboard > *, #settings > * { width: 100%; max-width: none; }
+
+/* ===== Final visual consistency pass ===== */
+/* Contact actions use the same soft hover treatment as dashboard cards. */
+.contact-option-item,
+.contact-option-item:hover,
+.contact-option-item:focus,
+.contact-option-item:active {
+    text-decoration: none !important;
+}
+.contact-option-item:hover,
+.contact-option-item:focus-visible {
+    background: rgba(255,255,255,0.58);
+    border-color: var(--border-light);
+    outline: none;
+}
+.contact-option-item:active { background: rgba(255,255,255,0.72); }
+body.dark-mode .contact-option-item:hover,
+body.dark-mode .contact-option-item:focus-visible { background: rgba(255,255,255,0.06); border-color: #333; }
+
+/* Property cards use exactly the same soft hover language as dashboard cards. */
+.property-card:hover,
+.property-card:focus-within {
+    background: rgba(255,255,255,0.58);
+    border-color: rgba(219,219,216,0.8);
+}
+body.dark-mode .property-card:hover,
+body.dark-mode .property-card:focus-within { background: rgba(255,255,255,0.06); border-color: #333; }
+
+/* Never add a dark focus outline/border when a field or dropdown is clicked. */
+.search-input:focus,
+.search-input:focus-visible,
+.filter-select:focus,
+.filter-select:focus-visible,
+select.form-control:focus,
+select.form-control:focus-visible,
+.settings-select:focus,
+.settings-select:focus-visible,
+.form-control:focus,
+.form-control:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: var(--border) !important;
+}
+
+/* Keep every status/label chip visually consistent with the reviewed/payment labels. */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 22px;
+    padding: 3px 10px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-decoration: none !important;
+}
+.badge-success { background: rgba(40,167,69,0.12); color: #267a3d; border-color: rgba(40,167,69,0.14); }
+.badge-warning { background: rgba(230,168,0,0.14); color: #8a6500; border-color: rgba(230,168,0,0.16); }
+.badge-danger { background: rgba(220,53,69,0.11); color: #a52a38; border-color: rgba(220,53,69,0.14); }
+.badge-info { background: rgba(23,162,184,0.11); color: #176b78; border-color: rgba(23,162,184,0.14); }
+
+/* Edit/Add/details overlays are cleaner with a smaller corner radius. */
+.modal-content,
+.modal-header,
+.recycle-box,
+.tenant-details-box,
+.popup-box,
+.loading-content {
+    border-radius: 10px;
+}
+.modal-header { border-radius: 10px 10px 0 0; }
+
+/* The call overlay is a normal action surface, not a browser link. */
+.contact-option-item { color: var(--text); }
+
+/* Contact overlay: swap the normal and hover appearances as requested. */
+.contact-option-item {
+    background: rgba(255,255,255,0.58) !important;
+    border-color: var(--border-light) !important;
+}
+.contact-option-item:hover,
+.contact-option-item:focus-visible {
+    background: var(--bg) !important;
+    border-color: var(--border-light) !important;
+    outline: none !important;
+}
+.contact-option-item:active {
+    background: var(--bg-hover) !important;
+}
+body.dark-mode .contact-option-item {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: #333 !important;
+}
+body.dark-mode .contact-option-item:hover,
+body.dark-mode .contact-option-item:focus-visible {
+    background: #242424 !important;
+    border-color: #333 !important;
+}
+body.dark-mode .contact-option-item:active {
+    background: #2c2c2c !important;
+}
+
+
+/* Final mobile polish: stable top toasts, compact filter rows, and shared sheet motion. */
+@keyframes toastDrop{from{opacity:0;transform:translate(-50%,-8px)}to{opacity:1;transform:translate(-50%,0)}}
+@media (max-width:768px){
+  #tenants .filter-bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;width:100%;}
+  #tenants .filter-bar .search-input-wrap{grid-column:1 / -1;width:100%;}
+  #tenants .filter-bar .filter-select{width:100%;min-width:0;}
+  #payments .filter-bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;width:100%;}
+  #payments .filter-bar .filter-select{width:100%;min-width:0;}
+}
+@media (max-width:480px){
+  #tenants .filter-bar,#payments .filter-bar{gap:8px;}
+}

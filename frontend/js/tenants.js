@@ -1215,6 +1215,17 @@ const Tenants = {
         App.openModal('Add Tenant', form);
         
         setTimeout(async () => {
+            const tenantForm = document.getElementById('tenantForm');
+            if (tenantForm && !tenantForm.dataset.removeDocBound) {
+                tenantForm.dataset.removeDocBound = '1';
+                tenantForm.addEventListener('click', (event) => {
+                    const btn = event.target.closest('.tenant-remove-document-btn');
+                    if (!btn) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.removeDocument(btn.dataset.tenantId, Number(btn.dataset.documentIndex));
+                });
+            }
             document.querySelectorAll('#tenantForm input[type="number"]').forEach(input => {
                 input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
             });
@@ -1724,7 +1735,7 @@ const Tenants = {
                         ${tenant.documents.map((doc, index) => `
                             <span style="background: var(--bg); padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; display: flex; align-items: center; gap: 8px;">
                                 ${escapeHTML(doc.name)}
-                                <button type="button" onclick="Tenants.removeDocument('${escapeHTML(tenant.id)}', ${index})" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 1rem;">×</button>
+                                <button type="button" class="tenant-remove-document-btn" data-tenant-id="${escapeHTML(tenant.id)}" data-document-index="${index}" aria-label="Remove document" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 1rem;">×</button>
                             </span>
                         `).join('')}
                     </div>
@@ -2040,7 +2051,10 @@ const Tenants = {
                     const tenant = App.state.tenants.find(t => t.id === tenantId);
                     if (!tenant) return;
                     
-                    const documents = tenant.documents || [];
+                    const documents = Array.isArray(tenant.documents) ? [...tenant.documents] : [];
+                    if (docIndex < 0 || docIndex >= documents.length) {
+                        throw new Error('Document no longer exists. Please reopen the tenant editor.');
+                    }
                     documents.splice(docIndex, 1);
                     
                     if (isDemoMode()) {
@@ -2063,7 +2077,7 @@ const Tenants = {
                         await App.loadData();
                     }
                     await this.editTenant(tenantId);
-                    Components.showSuccess('Document removed successfully');
+                    showNotification('Document removed successfully', 'success');
                 } catch (error) {
                     console.error('Error removing document:', error);
                     Components.showError(error.message || 'Failed to remove document');
@@ -2135,6 +2149,7 @@ const Tenants = {
         }
         body.innerHTML = html;
         modal.classList.add('active');
+        modal.setAttribute('aria-hidden', 'false');
         document.body.style.overflow = 'hidden';
     },
     

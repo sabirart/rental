@@ -254,66 +254,92 @@
 
         },
 
-        // Swipe-down-to-dismiss on bottom-sheet modals
+        // Swipe-down-to-dismiss for every mobile sheet/overlay, including
+        // overlays created dynamically after this module initializes.
         setupModalSheetBehavior() {
-            if (!isTouch) return;
+            if (!isTouch || this._sheetGestureBound) return;
+            this._sheetGestureBound = true;
 
-            ['modal', 'documentModal'].forEach(id => {
-                const modal = document.getElementById(id);
-                if (!modal) return;
-                const content = modal.querySelector('.modal-content');
-                if (!content) return;
+            const resolveSheet = (target) => {
+                const modal = target.closest('#modal.active');
+                if (modal) return { overlay: modal, panel: modal.querySelector('.modal-content'), close: () => window.App?.closeModal?.() };
+                const doc = target.closest('#documentModal.active');
+                if (doc) return { overlay: doc, panel: doc.querySelector('.modal-content'), close: () => window.App?.closeDocumentModal?.() || window.App?.closeModal?.() };
+                const tenant = target.closest('#tenantDetailsOverlay');
+                if (tenant) return { overlay: tenant, panel: tenant.querySelector('.tenant-details-box'), close: () => window.Tenants?.closeDetails?.() };
+                const recycle = target.closest('#recycleOverlay');
+                if (recycle) return { overlay: recycle, panel: recycle.querySelector('.recycle-box'), close: () => window.Recycle?.closeOverlay?.() };
+                const popup = target.closest('.popup-overlay');
+                if (popup) return { overlay: popup, panel: popup.querySelector('.popup-box'), close: () => window.Components?.closePopup?.() || popup.remove() };
+                const data = target.closest('#dataExportOverlay');
+                if (data) return { overlay: data, panel: document.getElementById('dataExportPanel'), close: () => window.DataIO?.closePanel?.() };
+                return null;
+            };
 
-                if (!content.querySelector('.modal-drag-handle')) {
-                    const handle = document.createElement('div');
-                    handle.className = 'modal-drag-handle';
-                    content.insertBefore(handle, content.firstChild);
+            let active = null;
+            let startY = 0;
+            let dy = 0;
+            let dragging = false;
+
+            document.addEventListener('touchstart', (e) => {
+                if (!this.isMobile() || e.touches.length !== 1) return;
+                const sheet = resolveSheet(e.target);
+                if (!sheet || !sheet.panel) return;
+
+                const rect = sheet.panel.getBoundingClientRect();
+                const touchY = e.touches[0].clientY;
+                const startedNearTop = touchY <= rect.top + 84;
+                const handle = e.target.closest('.modal-drag-handle');
+                if (!startedNearTop && !handle) return;
+
+                active = sheet;
+                startY = touchY;
+                dy = 0;
+                dragging = true;
+                sheet.panel.style.transition = 'none';
+            }, { passive: true });
+
+            document.addEventListener('touchmove', (e) => {
+                if (!dragging || !active || e.touches.length !== 1) return;
+                const nextY = e.touches[0].clientY;
+                const deltaX = Math.abs(e.touches[0].clientX - (e.touches[0].clientX));
+                dy = Math.max(0, nextY - startY);
+                if (dy > 0) {
+                    active.panel.style.transform = `translateY(${dy}px)`;
                 }
+            }, { passive: true });
 
-                let startY = 0, dy = 0, dragging = false;
+            document.addEventListener('touchend', () => {
+                if (!dragging || !active) return;
+                const sheet = active;
+                dragging = false;
+                active = null;
+                sheet.panel.style.transition = 'transform 0.24s cubic-bezier(0.32,0.72,0,1)';
 
-                content.addEventListener('touchstart', (e) => {
-                    if (!this.isMobile()) return;
-                    const header = e.target.closest('.modal-header') || e.target.closest('.modal-drag-handle');
-                    if (!header) return;
-                    startY = e.touches[0].clientY;
-                    dragging = true;
-                    content.style.transition = 'none';
-                }, { passive: true });
+                if (dy > 90) {
+                    sheet.panel.style.transform = 'translateY(100%)';
+                    setTimeout(() => {
+                        sheet.close();
+                        if (sheet.panel) {
+                            sheet.panel.style.transition = '';
+                            sheet.panel.style.transform = '';
+                        }
+                    }, 240);
+                } else {
+                    sheet.panel.style.transform = '';
+                    setTimeout(() => { if (sheet.panel) sheet.panel.style.transition = ''; }, 240);
+                }
+                dy = 0;
+            }, { passive: true });
 
-                content.addEventListener('touchmove', (e) => {
-                    if (!dragging) return;
-                    dy = Math.max(0, e.touches[0].clientY - startY);
-                    content.style.transform = `translateY(${dy}px)`;
-                }, { passive: true });
-
-                content.addEventListener('touchend', () => {
-                    if (!dragging) return;
-                    dragging = false;
-                    // Re-enable the smooth CSS transition BEFORE clearing the
-                    // inline transform, so the sheet eases back into place
-                    // instead of snapping instantly (this was the main cause
-                    // of the visible "jitter" when a swipe didn't dismiss).
-                    content.style.transition = 'transform 0.3s cubic-bezier(0.32,0.72,0,1)';
-                    if (dy > 100) {
-                        // Finish the dismiss motion smoothly off-screen, then
-                        // actually close once the animation has played.
-                        content.style.transform = 'translateY(100%)';
-                        setTimeout(() => {
-                            modal.classList.remove('active');
-                            if (window.App && typeof App.closeModal === 'function' && id === 'modal') {
-                                App.closeModal();
-                            }
-                            content.style.transition = '';
-                            content.style.transform = '';
-                        }, 300);
-                    } else {
-                        content.style.transform = '';
-                        setTimeout(() => { content.style.transition = ''; }, 300);
-                    }
-                    dy = 0;
-                });
-            });
+            document.addEventListener('touchcancel', () => {
+                if (!dragging || !active) return;
+                dragging = false;
+                active.panel.style.transition = 'transform 0.24s ease';
+                active.panel.style.transform = '';
+                active = null;
+                dy = 0;
+            }, { passive: true });
         },
 
         // Turn data tables into stacked cards on mobile

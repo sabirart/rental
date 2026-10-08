@@ -237,7 +237,11 @@ const App = {
         const recycleOverlay = document.getElementById('recycleOverlay');
         if (recycleOverlay) { recycleOverlay.remove(); document.body.style.overflow = ''; }
         if (typeof Components !== 'undefined' && Components.closePopup) Components.closePopup();
-        document.getElementById('documentModal')?.classList.remove('active');
+        if (document.getElementById('documentModal')?.classList.contains('active')) {
+            this.closeDocumentModal();
+        } else {
+            document.getElementById('documentModal')?.classList.remove('active');
+        }
         
         this.state.currentView = view;
         window.location.hash = view;
@@ -303,7 +307,7 @@ const App = {
         }
         if (modal) modal.classList.remove('active');
         const documentModal = document.getElementById('documentModal');
-        if (documentModal) documentModal.classList.remove('active');
+        if (documentModal && documentModal.classList.contains('active')) this.closeDocumentModal();
         document.body.style.overflow = '';
         this._syncOverlayScrollLock();
     },

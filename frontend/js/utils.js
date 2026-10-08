@@ -139,24 +139,27 @@ function showNotification(message, type = 'info') {
     if (notificationTimeout) clearTimeout(notificationTimeout);
     const existing = document.querySelector('.notification');
     if (existing) existing.remove();
-    
+
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
-    notification.textContent = message;
-    
-    // Check if mobile
-    const isMobile = window.innerWidth <= 768;
-    if (isMobile) {
-        notification.style.top = 'calc(60px + var(--safe-top, 0px))';
-        notification.style.bottom = 'auto';
-    }
-    
+    const shortNotification = {
+        'Tenant updated successfully': 'Tenant updated',
+        'Tenant added successfully': 'Tenant added',
+        'Payment updated successfully': 'Payment updated',
+        'Payment added successfully': 'Payment added',
+        'Document removed successfully': 'Document removed',
+        'Month export downloaded': 'Export downloaded',
+        'Data exported successfully': 'Data exported',
+        'Imported successfully': 'Import complete'
+    };
+    notification.textContent = shortNotification[message] || String(message).trim().split(/\s+/).slice(0, 2).join(' ');
+
     document.body.appendChild(notification);
-    
+
     notificationTimeout = setTimeout(() => {
         notification.style.opacity = '0';
-        notification.style.transition = 'opacity 0.3s ease';
-        setTimeout(() => { if (notification.parentNode) notification.remove(); notificationTimeout = null; }, 300);
+        notification.style.transition = 'opacity 0.2s ease';
+        setTimeout(() => { if (notification.parentNode) notification.remove(); notificationTimeout = null; }, 200);
     }, 3000);
 }
 
@@ -165,12 +168,12 @@ if (!document.getElementById('notificationStyles')) {
     const style = document.createElement('style');
     style.id = 'notificationStyles';
     style.textContent = `
-        .notification { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); padding:12px 24px; border-radius:6px; font-size:.875rem; z-index:99999; max-width:400px; text-align:center; background:#1a1a1a; color:#fff; animation:toastUp .3s ease; box-shadow:0 4px 12px rgba(0,0,0,.15); }
+        .notification { position:fixed; top:calc(16px + var(--safe-top, 0px)); left:50%; transform:translateX(-50%); padding:10px 16px; border-radius:8px; font-size:.8rem; line-height:1.2; z-index:99999; max-width:min(320px, calc(100vw - 32px)); white-space:nowrap; text-align:center; background:#1a1a1a; color:#fff; animation:toastDrop .22s ease-out; box-shadow:0 4px 12px rgba(0,0,0,.12); pointer-events:none; }
         .notification-success { background:#28a745; }
         .notification-error { background:#dc3545; }
         .notification-warning { background:#ffc107; color:#1a1a1a; }
         .notification-info { background:#17a2b8; }
-        @keyframes toastUp { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+        @keyframes toastDrop { from { opacity:0; transform:translate(-50%, -8px); } to { opacity:1; transform:translate(-50%, 0); } }
     `;
     document.head.appendChild(style);
 }

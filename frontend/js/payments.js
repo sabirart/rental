@@ -432,6 +432,7 @@ const Payments = {
                 </div>
                 ${this.getTotalHTML(withoutDue, totalWithDue, payment.amount_paid || 0, payment.status)}
                 <div class="form-actions">
+                    <button type="button" class="btn btn-outline" id="paymentExportBtn">Export</button>
                     <button type="submit" class="btn btn-primary" id="paymentSubmitBtn">Update Payment</button>
                 </div>
             </form>
@@ -482,6 +483,11 @@ const Payments = {
             });
         }
         
+        const paymentExportBtn = document.getElementById('paymentExportBtn');
+        if (paymentExportBtn) {
+            paymentExportBtn.addEventListener('click', () => this.exportCurrentPayment());
+        }
+
         const form = document.getElementById('paymentForm');
         if (form) {
             form.addEventListener('submit', async (e) => {
@@ -611,6 +617,19 @@ const Payments = {
         }
     },
     
+
+    exportCurrentPayment() {
+        const id = document.getElementById('paymentId')?.value;
+        const payment = (App.state.payments || []).find(p => p.id === id);
+        if (!payment) {
+            showNotification('Payment not found', 'error');
+            return;
+        }
+        if (typeof DataIO !== 'undefined' && DataIO.downloadPaymentsCsv) {
+            DataIO.downloadPaymentsCsv([payment], App.state.tenants || []);
+            showNotification('Export downloaded', 'success');
+        }
+    },
     async updatePayment() {
         if (this._isProcessing) return;
         

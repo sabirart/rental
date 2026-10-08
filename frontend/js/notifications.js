@@ -49,7 +49,54 @@ const Notifications = {
         document.getElementById('notifBellBtnMobile')?.addEventListener('click', openPanel);
         document.getElementById('notifPanelClose')?.addEventListener('click', () => this.hidePanel());
         document.getElementById('notifPanelOverlay')?.addEventListener('click', () => this.hidePanel());
-        
+
+        document.getElementById('notifPanelBody')?.addEventListener('click', (event) => {
+            const itemEl = event.target.closest('.notif-item[data-notification-id]');
+            if (!itemEl) return;
+            const item = this._allItems.find(entry => entry.id === itemEl.dataset.notificationId);
+            if (item) this.handleNotificationAction(item);
+        });
+        document.getElementById('notifPanelBody')?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            const itemEl = event.target.closest('.notif-item[data-notification-id]');
+            if (!itemEl) return;
+            event.preventDefault();
+            const item = this._allItems.find(entry => entry.id === itemEl.dataset.notificationId);
+            if (item) this.handleNotificationAction(item);
+        });
+    },
+
+    handleNotificationAction(item) {
+        if (!item) return;
+
+        // Persist the clicked notification as read even when the panel was
+        // opened before the notification state was refreshed.
+        const read = this._getReadIds();
+        read.add(item.id);
+        this._saveReadIds(read);
+        this._items = this._items.filter(entry => entry.id !== item.id);
+        this._renderBadge();
+
+        this.hidePanel();
+
+        if (item.type === 'payment' && item.paymentId) {
+            App.navigateTo('payments');
+            requestAnimationFrame(() => {
+                if (window.Payments && typeof Payments.editPayment === 'function') {
+                    Payments.editPayment(item.paymentId);
+                }
+            });
+            return;
+        }
+
+        if (item.type === 'lease' && item.tenantId) {
+            App.navigateTo('tenants');
+            requestAnimationFrame(() => {
+                if (window.Tenants && typeof Tenants.showDetails === 'function') {
+                    Tenants.showDetails(item.tenantId);
+                }
+            });
+        }
     },
 
     showPanel() {
@@ -140,6 +187,7 @@ const Notifications = {
                     items.push({
                         id: `lease:${tenant.id}:${tenant.lease_end_date}`,
                         type: 'lease',
+                        tenantId: tenant.id,
                         urgent: overdue,
                         icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
                         title: overdue ? 'Lease has ended' : 'Lease ending soon',
@@ -156,6 +204,8 @@ const Notifications = {
                 items.push({
                     id: `payment:${pending.id || `${tenant.id}:${pending.month}:${pending.year}`}:${pending.status}:${pending.total_payment}`,
                     type: 'payment',
+                    tenantId: tenant.id,
+                    paymentId: pending.id,
                     urgent: pending.status === 'unpaid',
                     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M15 9.5c0-1.4-1.3-2.5-3-2.5s-3 1.1-3 2.5 1.3 2 3 2.5 3 1.1 3 2.5-1.3 2.5-3 2.5-3-1.1-3-2.5"/></svg>',
                     title: pending.status === 'partial' ? 'Partial payment pending' : 'Payment pending',
@@ -193,7 +243,7 @@ const Notifications = {
         }
 
         body.innerHTML = panelItems.map(item => `
-            <div class="notif-item ${item.urgent ? 'notif-urgent' : ''}">
+            <div class="notif-item ${item.urgent ? 'notif-urgent' : ''}" data-notification-id="${escapeHTML(item.id)}" role="button" tabindex="0">
                 <div class="notif-item-icon">${item.icon}</div>
                 <div class="notif-item-body">
                     <div class="notif-item-title">${escapeHTML(item.title)}</div>
