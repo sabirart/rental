@@ -645,7 +645,7 @@ const Tenants = {
                     : '<span class="badge badge-danger">Unpaid</span>';
             
             html += `
-                <div class="payment-history-item" onclick="Tenants.editPayment('${escapeHTML(payment.id)}')" style="
+                <div class="payment-history-item" onclick="Payments.editPayment('${escapeHTML(payment.id)}', '${escapeHTML(tenant.id)}')" style="
                     border: 1px solid var(--border-light);
                     border-radius: 8px;
                     padding: 12px 16px;
@@ -1094,6 +1094,22 @@ const Tenants = {
         }
     },
     
+    _addDraft: {},
+
+    _captureAddDraft() {
+        const ids = ['tenantName','tenantFatherName','tenantCnic','tenantLocation','tenantMobile','tenantAdvancePayment','tenantLeaseEndDate','tenantDescription','tenantProperty','tenantRoomSelect'];
+        const draft = {};
+        ids.forEach(id => { const el = document.getElementById(id); if (el) draft[id] = el.value; });
+        this._addDraft = draft;
+    },
+
+    _clearAddDraft() { this._addDraft = {}; },
+
+    _restoreAddDraft() {
+        const draft = this._addDraft || {};
+        Object.entries(draft).forEach(([id, value]) => { const el = document.getElementById(id); if (el && value !== undefined) el.value = value; });
+    },
+
     showAddForm() {
         const properties = App.state.properties || [];
         
@@ -1125,11 +1141,11 @@ const Tenants = {
                 <div style="display: flex; gap: 20px; align-items: flex-start;">
                     <div class="settings-form-group" style="flex: 0 0 auto; text-align: center;">
                         <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Profile Picture</label>
-                        <div onclick="document.getElementById('tenantProfilePic').click()" style="width: 100px; height: 100px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 500; color: var(--text-light); cursor: pointer; border: 2px dashed var(--border); overflow: hidden; margin: 0 auto;">
+                        <div id="tenantProfilePicker" style="width: 100px; height: 100px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 500; color: var(--text-light); cursor: pointer; border: 2px dashed var(--border); overflow: hidden; margin: 0 auto;">
                             <span id="profilePicPlaceholder">+</span>
                             <img id="profilePicPreviewImg" style="display: none; width: 100%; height: 100%; object-fit: cover;" src="">
                         </div>
-                        <input type="file" id="tenantProfilePic" accept=".jpg,.jpeg,.png,.gif,image/jpeg,image/png,image/gif" style="display: none;" onchange="Tenants.previewProfilePic(event)">
+                        <input type="file" id="tenantProfilePic" accept=".jpg,.jpeg,.png,.gif,image/jpeg,image/png,image/gif" style="display: none;">
                         <small style="color: var(--text-light); font-size: 0.7rem; display: block; margin-top: 6px; text-align: center;">JPG, JPEG, PNG or GIF</small>
                     </div>
 
@@ -1213,7 +1229,17 @@ const Tenants = {
         `;
         
         App.openModal('Add Tenant', form);
-        
+        this._restoreAddDraft();
+        const addForm = document.getElementById('tenantForm');
+        if (addForm && !addForm.dataset.draftBound) {
+            addForm.dataset.draftBound = '1';
+            addForm.addEventListener('input', () => this._captureAddDraft());
+            addForm.addEventListener('change', () => this._captureAddDraft());
+        }
+        const addProfileInput = document.getElementById('tenantProfilePic');
+        const addProfileBox = document.getElementById('tenantProfilePicker');
+        if (addProfileBox && addProfileInput) addProfileBox.addEventListener('click', () => addProfileInput.click());
+        if (addProfileInput) addProfileInput.addEventListener('change', (event) => this.previewProfilePic(event));
         setTimeout(async () => {
             const tenantForm = document.getElementById('tenantForm');
             if (tenantForm && !tenantForm.dataset.removeDocBound) {
@@ -1327,9 +1353,35 @@ const Tenants = {
             }
         }, 100);
         
-        document.getElementById('tenantForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await this.saveTenant();
+        const tenantForm = document.getElementById('tenantForm');
+        if (tenantForm && !tenantForm.dataset.submitBound) {
+            tenantForm.dataset.submitBound = '1';
+            tenantForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await this.saveTenant();
+            });
+        }
+    },
+
+    _syncDemoRoomOccupancy() {
+        if (!isDemoMode()) return;
+        const store = getDemoStore();
+        (store.properties || []).forEach(property => {
+            if (!Array.isArray(property.rooms)) property.rooms = [];
+            const tenants = (store.tenants || []).filter(t => t.property_id === property.id && t.status === 'active');
+            const byRoom = new Map(tenants.map(t => [Number(t.room_number), t]));
+            for (let n = 1; n <= Number(property.total_rooms || 0); n++) {
+                let room = property.rooms.find(r => Number(r.room_number) === n);
+                if (!room) {
+                    room = { room_number: n, room_name: `Room ${n}`, rent_amount: Number(property.base_rent || 0) };
+                    property.rooms.push(room);
+                }
+                const tenant = byRoom.get(n);
+                room.status = tenant ? 'occupied' : 'available';
+                room.tenant_id = tenant ? tenant.id : null;
+                if (room.rent_amount == null) room.rent_amount = Number(property.base_rent || 0);
+            }
+            property.rooms = property.rooms.filter(r => Number(r.room_number) >= 1 && Number(r.room_number) <= Number(property.total_rooms || 0));
         });
     },
 
@@ -1480,7 +1532,20 @@ const Tenants = {
                     created_at: new Date().toISOString()
                 };
                 addDemoRecord('tenants', newTenant);
+                const property = getDemoStore().properties.find(p => p.id === propertyId);
+                const room = property && Array.isArray(property.rooms) ? property.rooms.find(r => Number(r.room_number) === roomNumber) : null;
+                if (room) { room.status = 'occupied'; room.tenant_id = newTenant.id; }
+                if (!getDemoStore().payments.some(p => p.tenant_id === newTenant.id && p.month === new Date().getMonth() + 1 && p.year === new Date().getFullYear())) {
+                    addDemoRecord('payments', {
+                        id: generateDemoId('pay'), tenant_id: newTenant.id,
+                        month: new Date().getMonth() + 1, year: new Date().getFullYear(),
+                        monthly_rent: Number(property?.base_rent || 0), electricity: 0, gas: 0, previous_dues: 0,
+                        total_payment: Number(property?.base_rent || 0), amount_paid: 0, custom_charges: [], status: 'unpaid', notes: 'Initial payment for new tenant'
+                    });
+                }
+                this._syncDemoRoomOccupancy();
                 await App.loadData();
+                this._clearAddDraft();
                 App.closeModal();
                 await this.render();
                 Components.hideLoading();
@@ -1488,22 +1553,21 @@ const Tenants = {
                 return;
             }
 
-            await API.createTenant({
-                name,
-                fatherName,
-                cnic,
-                location,
-                description,
-                propertyId,
-                roomNumber,
-                profile_pic: profilePicBase64,
-                documents: documents,
-                mobileNumber: mobileNumber || null,
-                advancePayment: advancePayment || 0,
+            const createResponse = await API.createTenant({
+                name, fatherName, cnic, location, description, propertyId, roomNumber,
+                status: 'active', profile_pic: profilePicBase64, documents,
+                mobileNumber: mobileNumber || null, advancePayment: advancePayment || 0,
                 leaseEndDate: leaseEndDate || null
             });
-            
+            if (!createResponse || createResponse.success === false || !createResponse.data?.id) {
+                throw new Error(createResponse?.message || 'Tenant was not created by the server.');
+            }
             await App.loadData();
+            if (!App.state.tenants.some(t => t.id === createResponse.data.id)) {
+                App.state.tenants.unshift(createResponse.data);
+                App.saveToLocalStorage();
+            }
+            this._clearAddDraft();
             App.closeModal();
             await this.render();
             Components.hideLoading();
@@ -1512,6 +1576,7 @@ const Tenants = {
             Components.hideLoading();
             console.error('Error saving tenant:', error);
             showNotification(error.message || 'Failed to add tenant', 'error');
+            console.error('Tenant create failed:', error);
         } finally {
             this._isProcessing = false;
             if (submitBtn) {
@@ -1635,13 +1700,13 @@ const Tenants = {
                 <div style="display: flex; gap: 20px; align-items: flex-start;">
                     <div class="settings-form-group" style="flex: 0 0 auto; text-align: center;">
                         <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Profile Picture</label>
-                        <div onclick="document.getElementById('tenantProfilePic').click()" style="width: 100px; height: 100px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 500; color: var(--text-light); cursor: pointer; border: 2px dashed var(--border); overflow: hidden; margin: 0 auto;">
+                        <div id="tenantProfilePicker" style="width: 100px; height: 100px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 500; color: var(--text-light); cursor: pointer; border: 2px dashed var(--border); overflow: hidden; margin: 0 auto;">
                             ${tenant.profile_pic 
                                 ? `<img id="profilePicPreviewImg" style="width: 100%; height: 100%; object-fit: cover; display: block;" src="${escapeHTML(tenant.profile_pic)}">` 
                                 : `<span id="profilePicPlaceholder">+</span>`
                             }
                         </div>
-                        <input type="file" id="tenantProfilePic" accept=".jpg,.jpeg,.png,.gif,image/jpeg,image/png,image/gif" style="display: none;" onchange="Tenants.previewProfilePic(event)">
+                        <input type="file" id="tenantProfilePic" accept=".jpg,.jpeg,.png,.gif,image/jpeg,image/png,image/gif" style="display: none;">
                         <small style="color: var(--text-light); font-size: 0.7rem; display: block; margin-top: 6px; text-align: center;">JPG, JPEG, PNG or GIF</small>
                     </div>
 
@@ -1749,6 +1814,10 @@ const Tenants = {
         `;
         
         App.openModal('Edit Tenant', form);
+        const editProfileInput = document.getElementById('tenantProfilePic');
+        const editProfileBox = document.getElementById('tenantProfilePicker');
+        if (editProfileBox && editProfileInput) editProfileBox.addEventListener('click', () => editProfileInput.click());
+        if (editProfileInput) editProfileInput.addEventListener('change', (event) => this.previewProfilePic(event));
 
         // Bind document X buttons after the edit form is inserted. The edit
         // form is rendered dynamically, so a listener attached during the
@@ -1868,10 +1937,14 @@ const Tenants = {
             }
         }, 100);
         
-        document.getElementById('tenantForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await this.updateTenant();
-        });
+        const editTenantForm = document.getElementById('tenantForm');
+        if (editTenantForm && !editTenantForm.dataset.submitBound) {
+            editTenantForm.dataset.submitBound = '1';
+            editTenantForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await this.updateTenant();
+            });
+        }
     },
     
     async updateTenant() {
@@ -2001,20 +2074,13 @@ const Tenants = {
             
             if (isDemoMode()) {
                 updateDemoRecord('tenants', id, {
-                    name,
-                    father_name: fatherName,
-                    cnic,
-                    location,
-                    description,
-                    property_id: propertyId,
-                    room_number: roomNumber,
-                    status,
-                    profile_pic: profilePicBase64,
-                    documents: documents,
-                    mobile_number: mobileNumber || null,
-                    advance_payment: advancePayment || 0,
+                    name, father_name: fatherName, cnic, location, description,
+                    property_id: propertyId, room_number: roomNumber, status,
+                    profile_pic: profilePicBase64, documents: documents,
+                    mobile_number: mobileNumber || null, advance_payment: advancePayment || 0,
                     lease_end_date: leaseEndDate || null
                 });
+                this._syncDemoRoomOccupancy();
                 await App.loadData();
                 App.closeModal();
                 await this.render();
@@ -2023,23 +2089,20 @@ const Tenants = {
                 return;
             }
 
-            await API.updateTenant(id, {
-                name,
-                fatherName,
-                cnic,
-                location,
-                description,
-                propertyId,
-                roomNumber,
-                status,
-                profile_pic: profilePicBase64,
-                documents: documents,
-                mobileNumber: mobileNumber || null,
-                advancePayment: advancePayment || 0,
+            const updateResponse = await API.updateTenant(id, {
+                name, fatherName, cnic, location, description, propertyId, roomNumber, status,
+                profile_pic: profilePicBase64, documents,
+                mobileNumber: mobileNumber || null, advancePayment: advancePayment || 0,
                 leaseEndDate: leaseEndDate || null
             });
-            
+            if (!updateResponse || updateResponse.success === false || !updateResponse.data?.id) {
+                throw new Error(updateResponse?.message || 'Tenant was not updated by the server.');
+            }
             await App.loadData();
+            const updatedIndex = App.state.tenants.findIndex(t => t.id === id);
+            if (updatedIndex === -1) App.state.tenants.unshift(updateResponse.data);
+            else App.state.tenants[updatedIndex] = updateResponse.data;
+            App.saveToLocalStorage();
             App.closeModal();
             await this.render();
             Components.hideLoading();
@@ -2047,6 +2110,7 @@ const Tenants = {
         } catch (error) {
             Components.hideLoading();
             showNotification(error.message || 'Failed to update tenant', 'error');
+            console.error('Tenant update failed:', error);
         } finally {
             this._isProcessing = false;
             if (submitBtn) {
@@ -2185,11 +2249,19 @@ const Tenants = {
                 
                 try {
                     if (isDemoMode()) {
-                        deleteDemoRecord('tenants', id);
+                        const store = getDemoStore();
+                        const index = (store.tenants || []).findIndex(t => t.id === id);
+                        if (index >= 0) {
+                            const tenant = store.tenants[index];
+                            store.tenants.splice(index, 1);
+                            store.recycle = Array.isArray(store.recycle) ? store.recycle : [];
+                            store.recycle.unshift({ id: generateDemoId('recycle'), original_id: tenant.id, type: 'tenant', data: JSON.parse(JSON.stringify(tenant)), deleted_at: new Date().toISOString() });
+                        }
                         await App.loadData();
                         await this.render();
+                        if (window.Recycle) { await Recycle.loadItems(); Recycle.renderContent(); Recycle.updateSettingsBadge(); }
                         Components.hideLoading();
-                        Components.showSuccess('Tenant deleted successfully');
+                        showNotification('Tenant deleted', 'success');
                         return;
                     }
                     await API.deleteTenant(id);

@@ -18,6 +18,8 @@
             this.setupDrawerSwipe();
             this.setupTouchFeedback();
             this.setupModalSheetBehavior();
+            this.setupOverlayCloseDelegation();
+            this.setupSectionSwipe();
             this.setupTableCardLabels();
             this.preventIOSZoomOnFocus();
 
@@ -256,6 +258,52 @@
 
         // Swipe-down-to-dismiss for every mobile sheet/overlay, including
         // overlays created dynamically after this module initializes.
+        setupOverlayCloseDelegation() {
+            if (this._closeDelegationBound) return;
+            this._closeDelegationBound = true;
+            document.addEventListener('click', (event) => {
+                const close = event.target.closest('.modal-close, .recycle-close, .tenant-details-close, .popup-close-x, .image-preview-close');
+                if (!close) return;
+                const modal = close.closest('#modal');
+                if (modal) { event.preventDefault(); event.stopImmediatePropagation(); window.App?.closeModal?.(); return; }
+                const recycle = close.closest('#recycleOverlay');
+                if (recycle) { event.preventDefault(); event.stopImmediatePropagation(); window.Recycle?.closeOverlay?.(); return; }
+                const details = close.closest('#tenantDetailsOverlay');
+                if (details) { event.preventDefault(); event.stopImmediatePropagation(); window.Tenants?.closeDetails?.(); return; }
+                const popup = close.closest('.popup-overlay');
+                if (popup) { event.preventDefault(); event.stopImmediatePropagation(); window.Components?.closePopup?.(); return; }
+                const image = close.closest('#imagePreviewOverlay');
+                if (image) { event.preventDefault(); event.stopImmediatePropagation(); image.remove(); return; }
+            }, true);
+        },
+
+        setupSectionSwipe() {
+            if (!isTouch || this._sectionSwipeBound) return;
+            this._sectionSwipeBound = true;
+            const views = ['dashboard','tenants','properties','payments','settings'];
+            let startX=0,startY=0,tracking=false;
+            document.addEventListener('touchstart', (e) => {
+                if (!this.isMobile() || e.touches.length !== 1) return;
+                if (e.target.closest('.modal, .popup-overlay, .recycle-overlay, .tenant-details-overlay, #notifPanel, input, textarea, select, button, a, .table-container, .properties-grid')) return;
+                const t=e.touches[0]; startX=t.clientX; startY=t.clientY; tracking=true;
+            }, {passive:true});
+            document.addEventListener('touchmove', (e) => {
+                if (!tracking || e.touches.length !== 1) return;
+                const t=e.touches[0], dx=t.clientX-startX, dy=t.clientY-startY;
+                if (Math.abs(dy) > Math.abs(dx) + 8) { tracking=false; return; }
+                if (Math.abs(dx) > 18) e.preventDefault?.();
+            }, {passive:false});
+            document.addEventListener('touchend', (e) => {
+                if (!tracking) return; tracking=false;
+                const t=e.changedTouches[0], dx=t.clientX-startX, dy=t.clientY-startY;
+                if (Math.abs(dx) < 80 || Math.abs(dx) < Math.abs(dy)*1.35) return;
+                const current=(window.App?.state?.currentView || location.hash.slice(1) || 'dashboard');
+                const idx=views.indexOf(current); if(idx<0) return;
+                const next=views[Math.max(0, Math.min(views.length-1, idx + (dx<0 ? 1 : -1)))];
+                if(next!==current) window.App?.navigateTo?.(next);
+            }, {passive:true});
+        },
+
         setupModalSheetBehavior() {
             if (!isTouch || this._sheetGestureBound) return;
             this._sheetGestureBound = true;

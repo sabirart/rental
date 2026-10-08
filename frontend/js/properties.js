@@ -857,11 +857,27 @@ const Properties = {
             
             try {
                 if (isDemoMode()) {
-                    deleteDemoRecord('properties', id);
+                    const store = getDemoStore();
+                    const index = (store.properties || []).findIndex(p => p.id === id);
+                    if (index >= 0) {
+                        const property = JSON.parse(JSON.stringify(store.properties[index]));
+                        property.rooms = Array.isArray(property.rooms) ? property.rooms : [];
+                        if (!property.rooms.length) {
+                            const tenants = (store.tenants || []).filter(t => t.property_id === id);
+                            for (let i = 1; i <= (property.total_rooms || 0); i++) {
+                                const tenant = tenants.find(t => t.room_number === i);
+                                property.rooms.push({ room_number:i, room_name:`Room ${i}`, status:tenant ? 'occupied' : 'available', tenant_id:tenant?.id || null, rent_amount:property.base_rent });
+                            }
+                        }
+                        store.properties.splice(index, 1);
+                        store.recycle = Array.isArray(store.recycle) ? store.recycle : [];
+                        store.recycle.unshift({ id: generateDemoId('recycle'), original_id: property.id, type: 'property', data: property, deleted_at: new Date().toISOString() });
+                    }
                     await App.loadData();
                     await this.render();
+                    if (window.Recycle) { await Recycle.loadItems(); Recycle.renderContent(); Recycle.updateSettingsBadge(); }
                     Components.hideLoading();
-                    Components.showSuccess('Property deleted successfully');
+                    showNotification('Property deleted', 'success');
                     return;
                 }
                 await API.deleteProperty(id);
@@ -878,12 +894,28 @@ const Properties = {
         });
     },
     
+    _getDemoRooms(propertyId) {
+        const store = getDemoStore();
+        const property = (store.properties || []).find(p => p.id === propertyId);
+        if (!property) return [];
+        if (!Array.isArray(property.rooms) || !property.rooms.length) {
+            const tenants = (store.tenants || []).filter(t => t.property_id === propertyId);
+            property.rooms = [];
+            for (let i = 1; i <= (property.total_rooms || 0); i++) {
+                const tenant = tenants.find(t => t.room_number === i);
+                property.rooms.push({ room_number:i, room_name:`Room ${i}`, status:tenant ? 'occupied' : 'available', tenant_id:tenant?.id || null, rent_amount:property.base_rent });
+            }
+        }
+        const tenants = (store.tenants || []).filter(t => t.property_id === propertyId);
+        property.rooms.forEach(r => { const tenant = tenants.find(t => t.room_number === r.room_number); r.status = tenant ? 'occupied' : 'available'; r.tenant_id = tenant?.id || null; });
+        return property.rooms;
+    },
+
     async showRoomManagement(propertyId) {
         if (this._isProcessing) return;
         
         try {
-            const roomsData = await API.getPropertyRooms(propertyId);
-            const rooms = roomsData.data || [];
+            const rooms = isDemoMode() ? this._getDemoRooms(propertyId) : ((await API.getPropertyRooms(propertyId)).data || []);
             const property = App.state.properties.find(p => p.id === propertyId);
             if (!property) { showNotification('Property not found', 'error'); return; }
             
@@ -954,8 +986,7 @@ const Properties = {
         
         (async () => {
             try {
-                const roomsData = await API.getPropertyRooms(propertyId);
-                const rooms = roomsData.data || [];
+                const rooms = isDemoMode() ? this._getDemoRooms(propertyId) : ((await API.getPropertyRooms(propertyId)).data || []);
                 const room = rooms.find(r => r.room_number === roomNumber);
                 if (!room) { showNotification('Room not found', 'error'); return; }
                 
@@ -989,12 +1020,16 @@ const Properties = {
         if (this._isProcessing) return;
         
         if (isDemoMode()) {
-            Components.showAlert(
-                'Demo Mode',
-                'Please create an account or login to update rooms.',
-                'Login',
-                'primary',
-                () => { SiteController.openAuthModal('login'); });
+            const store = getDemoStore();
+            const property = (store.properties || []).find(p => p.id === propertyId);
+            const room = property && this._getDemoRooms(propertyId).find(r => r.room_number === roomNumber);
+            if (!room) { showNotification('Room not found', 'error'); return; }
+            const roomName = document.getElementById('editRoomName').value.trim() || `Room ${roomNumber}`;
+            const rentAmount = parseFloat(document.getElementById('editRoomRent').value);
+            if (rentAmount < 0 || Number.isNaN(rentAmount)) { showNotification('Rent invalid', 'error'); return; }
+            room.room_name = roomName; room.rent_amount = rentAmount;
+            await App.loadData(); App.closeModal(); await this.render(); this.showRoomManagement(propertyId);
+            showNotification('Room updated', 'success');
             return;
         }
         
@@ -1033,12 +1068,17 @@ const Properties = {
         if (this._isProcessing) return;
         
         if (isDemoMode()) {
-            Components.showAlert(
-                'Demo Mode',
-                'Please create an account or login to remove rooms.',
-                'Login',
-                'primary',
-                () => { SiteController.openAuthModal('login'); });
+            Components.showConfirm('Remove Room', 'Are you sure you want to remove this room?', 'Remove', 'Cancel', 'danger', async () => {
+                const store = getDemoStore();
+                const property = (store.properties || []).find(p => p.id === propertyId);
+                const rooms = this._getDemoRooms(propertyId);
+                const room = rooms.find(r => r.room_number === roomNumber);
+                if (!room) return;
+                if (room.status === 'occupied') { showNotification('Room occupied', 'error'); return; }
+                property.rooms = rooms.filter(r => r.room_number !== roomNumber);
+                await App.loadData(); this.showRoomManagement(propertyId);
+                showNotification('Room removed', 'success');
+            });
             return;
         }
         
@@ -1065,12 +1105,19 @@ const Properties = {
         if (this._isProcessing) return;
         
         if (isDemoMode()) {
-            Components.showAlert(
-                'Demo Mode',
-                'Please create an account or login to add rooms.',
-                'Login',
-                'primary',
-                () => { SiteController.openAuthModal('login'); });
+            const roomNumber = parseInt(document.getElementById('newRoomNumber').value);
+            const roomName = document.getElementById('newRoomName').value.trim();
+            const rentAmount = parseFloat(document.getElementById('newRoomRent').value);
+            if (!roomNumber || roomNumber < 1) { showNotification('Room required', 'error'); return; }
+            const store = getDemoStore();
+            const property = (store.properties || []).find(p => p.id === propertyId);
+            if (!property) { showNotification('Property not found', 'error'); return; }
+            const rooms = this._getDemoRooms(propertyId);
+            if (rooms.some(r => r.room_number === roomNumber)) { showNotification('Room exists', 'error'); return; }
+            property.rooms.push({ room_number:roomNumber, room_name:roomName || `Room ${roomNumber}`, status:'available', tenant_id:null, rent_amount:Number.isFinite(rentAmount) ? rentAmount : property.base_rent });
+            property.total_rooms = Math.max(property.total_rooms || 0, roomNumber);
+            await App.loadData(); this.showRoomManagement(propertyId);
+            showNotification('Room added', 'success');
             return;
         }
         

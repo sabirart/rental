@@ -135,9 +135,9 @@ const Notifications = {
 
         const rect = bell.getBoundingClientRect();
         const width = Math.min(360, window.innerWidth - 24);
-        let left = rect.right - width;
+        let left = isMobile ? (window.innerWidth - width) / 2 : rect.right - width;
         left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
-        const top = Math.min(rect.bottom + 8, window.innerHeight - 60);
+        const top = isMobile ? Math.max(64, Math.min((window.innerHeight - Math.min(70 * window.innerHeight / 100, 520)) / 2, window.innerHeight - 120)) : Math.min(rect.bottom + 8, window.innerHeight - 60);
 
         panel.style.width = width + 'px';
         panel.style.left = left + 'px';

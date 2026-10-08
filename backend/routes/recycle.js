@@ -8,8 +8,8 @@ router.use(authMiddleware.authenticate);
 router.get('/', recycleController.getAll);
 router.get('/count', recycleController.getCount);
 router.post('/recover/:id', recycleController.recover);
-router.delete('/:id', recycleController.deletePermanently);
 router.delete('/clear/all', recycleController.clearAll);
 router.delete('/clear/old', recycleController.deleteOldItems);
+router.delete('/:id', recycleController.deletePermanently);
 
 module.exports = router;

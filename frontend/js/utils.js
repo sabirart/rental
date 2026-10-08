@@ -82,7 +82,8 @@ const MAX_TOTAL_UPLOAD_MB = 20;
 // returns whether the total raw size is within MAX_TOTAL_UPLOAD_MB.
 function validateTotalUploadSize(profilePicFile, documentFiles = [], existingDocsBytes = 0) {
     const profileBytes = profilePicFile ? profilePicFile.size : 0;
-    const newDocsBytes = (documentFiles || []).reduce((sum, f) => sum + (f ? f.size : 0), 0);
+    const files = Array.isArray(documentFiles) ? documentFiles : Array.from(documentFiles || []);
+    const newDocsBytes = files.reduce((sum, f) => sum + (f ? f.size : 0), 0);
     const totalBytes = profileBytes + newDocsBytes + existingDocsBytes;
     return totalBytes <= MAX_TOTAL_UPLOAD_MB * 1024 * 1024;
 }

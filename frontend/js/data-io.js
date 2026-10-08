@@ -304,70 +304,171 @@ const DataIO = {
 
         try {
             const data = await Settings.importData(file);
-            const existingPropertyNames = new Map((App.state.properties || []).map(p => [p.name, p.id]));
-            const propertyIdMap = new Map(); // old id -> new/matched id
+            const currentProperties = App.state.properties || [];
+            const currentTenants = App.state.tenants || [];
+            const currentPayments = App.state.payments || [];
+            const propertyKey = (property) => `${String(property?.name || '').trim().toLowerCase()}|${String(property?.address || '').trim().toLowerCase()}`;
+            const existingPropertyNames = new Map(currentProperties.map(p => [propertyKey(p), p.id]));
+            const propertyIdMap = new Map();
+            const tenantIdMap = new Map();
 
-            // Properties: create any that don't already exist by name.
+            const makeRooms = (property, tenantList = []) => {
+                const count = Math.max(0, Number(property.total_rooms || 0));
+                const existingRooms = Array.isArray(property.rooms) ? property.rooms : [];
+                const byNumber = new Map(existingRooms.map(r => [Number(r.room_number), r]));
+                const result = [];
+                for (let i = 1; i <= count; i++) {
+                    const room = byNumber.get(i) || {};
+                    const tenant = tenantList.find(t => Number(t.room_number) === i && t.property_id === property.id && t.status === 'active');
+                    result.push({
+                        room_number: i,
+                        room_name: room.room_name || `Room ${i}`,
+                        status: tenant ? 'occupied' : (room.status === 'maintenance' ? 'maintenance' : 'available'),
+                        tenant_id: tenant ? tenant.id : null,
+                        rent_amount: Number(room.rent_amount ?? property.base_rent ?? 0)
+                    });
+                }
+                return result;
+            };
+
+            // Properties are restored first so tenant room assignments can be mapped.
             for (const property of (data.properties || [])) {
-                if (existingPropertyNames.has(property.name)) {
-                    propertyIdMap.set(property.id, existingPropertyNames.get(property.name));
+                const key = propertyKey(property);
+                const existingId = existingPropertyNames.get(key);
+                if (existingId) {
+                    propertyIdMap.set(property.id, existingId);
                     continue;
                 }
-                if (isDemoMode()) continue; // demo mode: skip property creation, tenants import unassigned
-                const created = await API.createProperty({
-                    name: property.name,
-                    address: property.address,
-                    totalRooms: property.total_rooms || 1,
-                    baseRent: property.base_rent || 0,
-                    status: property.status || 'active',
-                    description: property.description || ''
-                });
-                propertyIdMap.set(property.id, created.data.id);
-                existingPropertyNames.set(property.name, created.data.id);
-            }
-
-            // Tenants: skip any whose CNIC already exists.
-            const existingCnics = new Set((App.state.tenants || []).map(t => t.cnic));
-            let imported = 0, skipped = 0;
-
-            for (const tenant of (data.tenants || [])) {
-                if (existingCnics.has(tenant.cnic)) { skipped++; continue; }
-
-                const newPropertyId = tenant.property_id ? propertyIdMap.get(tenant.property_id) : null;
 
                 if (isDemoMode()) {
-                    addDemoRecord('tenants', {
-                        ...tenant,
-                        id: 'tenant_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-                        property_id: newPropertyId || null
-                    });
+                    const newProperty = {
+                        ...property,
+                        id: generateDemoId('prop'),
+                        total_rooms: Number(property.total_rooms || 1),
+                        base_rent: Number(property.base_rent || 0),
+                        rooms: []
+                    };
+                    newProperty.rooms = makeRooms(newProperty, data.tenants || []);
+                    addDemoRecord('properties', newProperty);
+                    propertyIdMap.set(property.id, newProperty.id);
+                    existingPropertyNames.set(key, newProperty.id);
                 } else {
-                    await API.createTenant({
+                    const created = await API.createProperty({
+                        name: property.name,
+                        address: property.address,
+                        totalRooms: property.total_rooms || 1,
+                        baseRent: property.base_rent || 0,
+                        status: property.status || 'active',
+                        description: property.description || ''
+                    });
+                    propertyIdMap.set(property.id, created.data.id);
+                    existingPropertyNames.set(key, created.data.id);
+                }
+            }
+
+            // Existing tenants are mapped by CNIC; newly imported tenants are mapped by old id.
+            const existingCnics = new Set(currentTenants.map(t => t.cnic));
+            for (const tenant of (data.tenants || [])) {
+                if (existingCnics.has(tenant.cnic)) {
+                    const existing = currentTenants.find(t => t.cnic === tenant.cnic);
+                    if (existing) tenantIdMap.set(tenant.id, existing.id);
+                    continue;
+                }
+
+                const newPropertyId = tenant.property_id ? propertyIdMap.get(tenant.property_id) : null;
+                const importedRoom = tenant.room_number ? Number(tenant.room_number) : null;
+
+                if (isDemoMode()) {
+                    const newTenant = {
+                        ...tenant,
+                        id: generateDemoId('tenant'),
+                        property_id: newPropertyId || null,
+                        room_number: newPropertyId ? importedRoom : null,
+                        documents: Array.isArray(tenant.documents) ? tenant.documents : []
+                    };
+                    addDemoRecord('tenants', newTenant);
+                    tenantIdMap.set(tenant.id, newTenant.id);
+                } else {
+                    const created = await API.createTenant({
                         name: tenant.name,
                         fatherName: tenant.father_name,
                         cnic: tenant.cnic,
                         location: tenant.location,
                         description: tenant.description || '',
                         propertyId: newPropertyId || undefined,
-                        roomNumber: newPropertyId ? tenant.room_number : undefined,
+                        roomNumber: newPropertyId ? importedRoom : undefined,
                         mobileNumber: tenant.mobile_number || null,
                         advancePayment: tenant.advance_payment || 0,
                         leaseEndDate: tenant.lease_end_date || null,
-                        documents: []
+                        profile_pic: tenant.profile_pic || null,
+                        documents: Array.isArray(tenant.documents) ? tenant.documents : []
                     });
+                    tenantIdMap.set(tenant.id, created.data.id);
                 }
                 existingCnics.add(tenant.cnic);
-                imported++;
+            }
+
+            // Rebuild demo room occupancy after tenant IDs are known.
+            if (isDemoMode()) {
+                const store = getDemoStore();
+                store.properties.forEach(property => {
+                    property.rooms = makeRooms(property, store.tenants);
+                });
+            }
+
+            // Payments are part of the full backup and must be restored too.
+            const paymentKeys = new Set(currentPayments.map(p => `${p.tenant_id}|${p.month}|${p.year}`));
+            let paymentsImported = 0;
+            let paymentsSkipped = 0;
+            for (const payment of (data.payments || [])) {
+                const newTenantId = tenantIdMap.get(payment.tenant_id);
+                if (!newTenantId) { paymentsSkipped++; continue; }
+                const key = `${newTenantId}|${payment.month}|${payment.year}`;
+                if (paymentKeys.has(key)) { paymentsSkipped++; continue; }
+
+                const payload = {
+                    tenantId: newTenantId,
+                    month: Number(payment.month),
+                    year: Number(payment.year),
+                    monthlyRent: Number(payment.monthly_rent || 0),
+                    electricity: Number(payment.electricity || 0),
+                    gas: Number(payment.gas || 0),
+                    previousDues: Number(payment.previous_dues || 0),
+                    amountPaid: Number(payment.amount_paid || 0),
+                    customCharges: Array.isArray(payment.custom_charges) ? payment.custom_charges : [],
+                    status: payment.status || 'unpaid',
+                    notes: payment.notes || ''
+                };
+                payload.totalPayment = payload.monthlyRent + payload.electricity + payload.gas + payload.previousDues;
+
+                if (isDemoMode()) {
+                    addDemoRecord('payments', {
+                        ...payment,
+                        id: generateDemoId('pay'),
+                        tenant_id: newTenantId,
+                        monthly_rent: payload.monthlyRent,
+                        electricity: payload.electricity,
+                        gas: payload.gas,
+                        previous_dues: payload.previousDues,
+                        total_payment: payload.totalPayment,
+                        amount_paid: payload.status === 'paid' ? payload.totalPayment : payload.status === 'unpaid' ? 0 : payload.amountPaid,
+                        custom_charges: payload.customCharges
+                    });
+                } else {
+                    await API.createPayment(payload);
+                }
+                paymentKeys.add(key);
+                paymentsImported++;
             }
 
             await App.loadData();
             App.renderCurrentView();
             Components.hideLoading();
-
             this.closePanel();
-            showNotification(`Imported ${imported} tenant(s)${skipped ? `, skipped ${skipped} duplicate(s)` : ''}`, 'success');
+            showNotification(`Imported ${tenantIdMap.size} tenant(s), ${paymentsImported} payment(s)`, 'success');
         } catch (error) {
             Components.hideLoading();
+            console.error('Import failed:', error);
             Components.showError(error.message || 'Failed to import data');
         } finally {
             confirmBtn.disabled = false;

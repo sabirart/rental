@@ -526,6 +526,12 @@ const Settings = {
 
     async updateRecycleCount() {
         try {
+            if (isDemoMode()) {
+                const count = Array.isArray(getDemoStore().recycle) ? getDemoStore().recycle.length : 0;
+                const badge = document.getElementById('recycleCount');
+                if (badge) { badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; }
+                return;
+            }
             const response = await API.getRecycleCount();
             const count = response.data ? response.data.total : 0;
             const badge = document.getElementById('recycleCount');

@@ -27,7 +27,7 @@ class RecycleBin {
     // recovering a deleted property brought the property row back but not
     // its rooms (they're cascade-deleted with the property), silently
     // losing all room data.
-    static async addProperty(propertyData, userId, rooms = []) {
+    static async addProperty(propertyData, userId, rooms = [], db = database) {
         try {
             const { id, name, address, total_rooms, base_rent, status, description } = propertyData;
             const roomsSnapshot = (rooms || []).map(r => ({
@@ -37,7 +37,7 @@ class RecycleBin {
                 rent_amount: r.rent_amount
             }));
             
-            await run(
+            await db.run(
                 `INSERT INTO recycle_bin (id, user_id, original_id, type, data, deleted_at)
                  VALUES (?, ?, ?, ?, ?, ?)`,
                 [Date.now().toString(36) + Math.random().toString(36).substr(2, 5), userId, id, 'property',

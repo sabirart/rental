@@ -13,9 +13,9 @@ class Tenant {
     // connection/BEGIN block as the related Property/Payment writes
     // (see tenantController.create/update). When omitted, it defaults to
     // the normal pooled query/get/run - existing call sites are unaffected.
-    static async findAll(userId) {
+    static async findAll(userId, db = database) {
         try {
-            const results = await query(`
+            const results = await db.query(`
                 SELECT t.*, p.name as property_name, p.address as property_address
                 FROM tenants t
                 LEFT JOIN properties p ON t.property_id = p.id
@@ -192,9 +192,9 @@ class Tenant {
         }
     }
 
-    static async findByCNIC(cnic, userId) {
+    static async findByCNIC(cnic, userId, db = database) {
         try {
-            const result = await get('SELECT * FROM tenants WHERE cnic = ? AND user_id = ?', [cnic, userId]);
+            const result = await db.get('SELECT * FROM tenants WHERE cnic = ? AND user_id = ?', [cnic, userId]);
             if (result && result.documents) {
                 try {
                     result.documents = JSON.parse(result.documents);

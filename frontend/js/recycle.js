@@ -13,7 +13,8 @@ const Recycle = {
     async loadItems() {
         if (this._isLoading) return this.items;
         if (isDemoMode()) {
-            this.items = [];
+            const store = getDemoStore();
+            this.items = Array.isArray(store.recycle) ? store.recycle : [];
             return this.items;
         }
         this._isLoading = true;
@@ -56,10 +57,10 @@ const Recycle = {
         
         let html = `
             <div class="recycle-tabs">
-                <button class="recycle-tab ${this.currentTab === 'tenants' ? 'active' : ''}" onclick="Recycle.switchTab('tenants')">
+                <button class="recycle-tab ${this.currentTab === 'tenants' ? 'active' : ''}" data-recycle-tab="tenants">
                     Tenants (${this.getCount('tenant')})
                 </button>
-                <button class="recycle-tab ${this.currentTab === 'properties' ? 'active' : ''}" onclick="Recycle.switchTab('properties')">
+                <button class="recycle-tab ${this.currentTab === 'properties' ? 'active' : ''}" data-recycle-tab="properties">
                     Properties (${this.getCount('property')})
                 </button>
             </div>
@@ -87,8 +88,8 @@ const Recycle = {
                             ${item.type === 'property' ? `<span class="recycle-item-detail">Address: ${escapeHTML(data.address || 'N/A')}</span>` : ''}
                         </div>
                         <div class="recycle-item-actions">
-                            <button class="btn btn-sm btn-primary" onclick="Recycle.recoverItem('${item.id}')">Recover</button>
-                            <button class="btn btn-sm btn-danger" onclick="Recycle.deletePermanently('${item.id}')">Delete</button>
+                            <button class="btn btn-sm btn-primary" data-recycle-action="recover" data-id="${escapeHTML(item.id)}">Recover</button>
+                            <button class="btn btn-sm btn-danger" data-recycle-action="delete" data-id="${escapeHTML(item.id)}">Delete</button>
                         </div>
                     </div>
                 `;
@@ -98,12 +99,34 @@ const Recycle = {
         html += `
             </div>
             <div class="recycle-footer">
-                <div></div>
-                <button class="btn btn-danger" onclick="Recycle.clearAll()">Clear All</button>
+                <button class="btn btn-danger" data-recycle-action="clear">Clear All</button>
             </div>
         `;
         
         container.innerHTML = html;
+
+        // Recycle content is rebuilt every time the tab changes. Bind through
+        // the stable container so both tabs always work after re-rendering.
+        if (!container.dataset.tabsBound) {
+            container.dataset.tabsBound = '1';
+            container.addEventListener('click', (event) => {
+                const tab = event.target.closest('[data-recycle-tab]');
+                if (tab && container.contains(tab)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.switchTab(tab.dataset.recycleTab);
+                    return;
+                }
+                const action = event.target.closest('[data-recycle-action]');
+                if (!action || !container.contains(action)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const type = action.dataset.recycleAction;
+                if (type === 'recover') this.recoverItem(action.dataset.id);
+                else if (type === 'delete') this.deletePermanently(action.dataset.id);
+                else if (type === 'clear') this.clearAll();
+            });
+        }
         
         // Update the settings badge count
         this.updateSettingsBadge();
@@ -121,12 +144,25 @@ const Recycle = {
     
     async recoverItem(id) {
         if (isDemoMode()) {
-            Components.showAlert(
-                'Demo Mode',
-                'Please create an account or login to recover items.',
-                'Login',
-                'primary',
-                () => { SiteController.openAuthModal('login'); });
+            const store = getDemoStore();
+            const itemIndex = (store.recycle || []).findIndex(item => item.id === id);
+            if (itemIndex < 0) { showNotification('Item not found', 'error'); return; }
+            const item = store.recycle[itemIndex];
+            const collection = item.type === 'tenant' ? 'tenants' : 'properties';
+            if (!Array.isArray(store[collection])) store[collection] = [];
+            const exists = store[collection].some(record => record.id === item.original_id || record.id === item.data?.id);
+            if (!exists) {
+                const restored = { ...item.data, id: item.original_id || item.data?.id };
+                store[collection].push(restored);
+            }
+            store.recycle.splice(itemIndex, 1);
+            await App.loadData();
+            await this.loadItems();
+            this.renderContent();
+            this.updateSettingsBadge();
+            if (App.state.currentView === 'tenants' && window.Tenants) await Tenants.render();
+            if (App.state.currentView === 'properties' && window.Properties) await Properties.render();
+            showNotification(item.type === 'tenant' ? 'Tenant restored' : 'Property restored', 'success');
             return;
         }
         try {
@@ -163,12 +199,13 @@ const Recycle = {
     
     async deletePermanently(id) {
         if (isDemoMode()) {
-            Components.showAlert(
-                'Demo Mode',
-                'Please create an account or login to delete items.',
-                'Login',
-                'primary',
-                () => { SiteController.openAuthModal('login'); });
+            const store = getDemoStore();
+            const index = (store.recycle || []).findIndex(item => item.id === id);
+            if (index >= 0) store.recycle.splice(index, 1);
+            await this.loadItems();
+            this.renderContent();
+            this.updateSettingsBadge();
+            showNotification('Item deleted', 'success');
             return;
         }
         Components.showConfirm(
@@ -209,12 +246,13 @@ const Recycle = {
     
     async clearAll() {
         if (isDemoMode()) {
-            Components.showAlert(
-                'Demo Mode',
-                'Please create an account or login to clear items.',
-                'Login',
-                'primary',
-                () => { SiteController.openAuthModal('login'); });
+            const store = getDemoStore();
+            const filterType = this.getTypeForFilter(this.currentTab);
+            store.recycle = (store.recycle || []).filter(item => item.type !== filterType);
+            await this.loadItems();
+            this.renderContent();
+            this.updateSettingsBadge();
+            showNotification('Items cleared', 'success');
             return;
         }
         Components.showConfirm(

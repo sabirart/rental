@@ -4,7 +4,8 @@ const UserSettings = require('./UserSettings');
 
 class Payment {
     // Given a status + the amounts on a payment, works out the correct
-    // amount_paid: 'paid' always means the full total was received, 'unpaid'
+    // amount_paid. A paid record may intentionally be less than total_payment
+    // when one or more bill/due checks are left unchecked; unpaid is always 0.
     // always means nothing was received yet, and 'partial' requires an
     // explicit amount strictly between 0 and the total (the caller must say
     // how much actually came in - there's no way to infer it). This is the
@@ -15,6 +16,13 @@ class Payment {
         const resolvedStatus = status || 'unpaid';
 
         if (resolvedStatus === 'paid') {
+            const paidInput = amountPaidInput === undefined || amountPaidInput === null || amountPaidInput === ''
+                ? NaN
+                : Number(amountPaidInput);
+            // The frontend may intentionally leave a bill unchecked. In that
+            // case total_payment still contains the full bill, while
+            // amount_paid contains only what was actually received.
+            if (Number.isFinite(paidInput) && paidInput >= 0) return Math.min(paidInput, total);
             return total;
         }
         if (resolvedStatus === 'unpaid') {

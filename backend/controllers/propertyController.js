@@ -1,6 +1,7 @@
 const Property = require('../models/Property');
 const Tenant = require('../models/Tenant');
 const { AppError } = require('../middleware/errorHandler');
+const { transaction } = require('../config/database');
 
 function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
@@ -176,10 +177,12 @@ const propertyController = {
 
     async clearAll(req, res, next) {
         try {
-            const properties = await Property.findAll(req.userId);
-            for (const property of properties) {
-                await Property.delete(property.id, req.userId);
-            }
+            await transaction(async (db) => {
+                const properties = await Property.findAll(req.userId, db);
+                for (const property of properties) {
+                    await Property.delete(property.id, req.userId, db);
+                }
+            });
             res.json({ success: true, message: 'All properties cleared successfully' });
         } catch (error) {
             next(error);

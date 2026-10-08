@@ -154,7 +154,7 @@ let _demoStore = null;
 
 function getDemoStore() {
     if (!_demoStore) {
-        _demoStore = JSON.parse(JSON.stringify(SAMPLE_DATA));
+        _demoStore = JSON.parse(JSON.stringify({ ...SAMPLE_DATA, recycle: [] }));
     }
     return _demoStore;
 }
@@ -162,7 +162,7 @@ function getDemoStore() {
 // Explicitly reset the demo session back to the original sample data
 // (used by "Clear all data" in demo mode instead of blocking the user).
 function resetDemoStore() {
-    _demoStore = JSON.parse(JSON.stringify(SAMPLE_DATA));
+    _demoStore = JSON.parse(JSON.stringify({ ...SAMPLE_DATA, recycle: [] }));
     return _demoStore;
 }
 

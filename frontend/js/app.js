@@ -231,7 +231,10 @@ const App = {
     },
     
     navigateTo(view) {
-        // Close all open overlays/modals
+        // Clear every overlay layer before changing sections. This prevents a
+        // previously closed sheet/viewer from leaving an invisible hit-area,
+        // scroll lock, or stale pointer state over the next section.
+        if (window.closeAllOverlays) window.closeAllOverlays();
         this.closeModal();
         if (typeof Tenants !== 'undefined' && Tenants.closeDetails) Tenants.closeDetails();
         const recycleOverlay = document.getElementById('recycleOverlay');
@@ -248,6 +251,9 @@ const App = {
         document.querySelectorAll('.nav-link').forEach(link => link.classList.toggle('active', link.getAttribute('data-view') === view));
         document.querySelectorAll('.view').forEach(section => section.classList.toggle('active', section.id === view));
         this.renderCurrentView();
+        document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
+        if (typeof this._syncOverlayScrollLock === 'function') this._syncOverlayScrollLock();
         window.scrollTo({ top: 0, behavior: 'smooth' });
         const mainContent = document.getElementById('mainContent');
         if (mainContent) mainContent.scrollTop = 0;
