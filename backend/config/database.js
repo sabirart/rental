@@ -20,7 +20,13 @@
 // is the ONLY place that needed to change engines.
 
 const { Pool, types } = require('pg');
+const dns = require('dns');
 require('dotenv').config();
+
+// Render's network is commonly IPv4-only. Make Node prefer IPv4 before pg
+// creates sockets, including environments where the resolver ignores the
+// pool-level family hint.
+try { dns.setDefaultResultOrder('ipv4first'); } catch (_) {}
 
 // Postgres' BIGINT (used by COUNT(*)) is returned as a JS string by default
 // to avoid silent precision loss on huge counts. Nothing in this app counts
@@ -54,7 +60,7 @@ const preferIPv4 = process.env.DATABASE_IPV4 !== 'false';
 
 const pool = new Pool({
     connectionString,
-    ...(preferIPv4 ? { family: 4 } : {}),
+    ...(preferIPv4 ? { family: 4, lookup: (hostname, options, callback) => dns.lookup(hostname, { ...options, family: 4 }, callback) } : {}),
     ssl: useSSL ? { rejectUnauthorized: false } : false,
     max: 10,
     idleTimeoutMillis: 30000,
@@ -346,6 +352,9 @@ async function migrateTables() {
     console.log('Migration check complete');
 }
 
+let databaseReady = false;
+let databaseInitError = null;
+
 async function initDatabase() {
     try {
         // Fail fast and loud if the database is unreachable, rather than
@@ -355,16 +364,17 @@ async function initDatabase() {
         await createTables();
         await migrateTables();
     } catch (err) {
-        console.error('FATAL: Could not initialize Postgres database:', err.message);
+        databaseInitError = err;
+        console.error('DATABASE INITIALIZATION FAILED:', err.message);
         if (err && err.code === 'ENETUNREACH') {
             console.error('Database network hint: the configured Postgres endpoint resolved to an unreachable address.');
-            console.error('This build prefers IPv4 (DATABASE_IPV4=true). If your provider only exposes IPv6, use its IPv4-compatible/pooler connection URL or set DATABASE_IPV4=false.');
+            console.error('Render is IPv4-only here. If DATABASE_URL is a Supabase direct db.* endpoint, replace it with Supabase Connect -> Session pooler (port 5432), which is IPv4-compatible. DATABASE_IPV4 cannot turn an IPv6-only endpoint into IPv4.');
         }
-        process.exit(1);
+        console.error('The HTTP server will remain available so the deployed frontend can load. Database-backed API requests will report a database-unavailable error until DATABASE_URL points to an IPv4-capable Postgres endpoint.');
     }
 }
 
-initDatabase();
+initDatabase().then(() => { databaseReady = !databaseInitError; });
 
 // server.js already owns SIGINT/SIGTERM shutdown (closes the HTTP server
 // and calls process.exit). This just makes sure the Postgres pool is
@@ -379,6 +389,8 @@ process.on('SIGINT', async () => {
 });
 
 module.exports = {
+    get databaseReady() { return databaseReady; },
+    get databaseInitError() { return databaseInitError; },
     pool,
     query,
     get,

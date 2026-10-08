@@ -26,3 +26,6 @@ services:
         sync: false
       - key: DATABASE_IPV4
         value: 'true'
+      # IMPORTANT: Render web services are IPv4-only. DATABASE_URL must use
+      # an IPv4-compatible Postgres endpoint (for Supabase, use Connect ->
+      # Session pooler, port 5432), not the direct db.* IPv6 endpoint.
