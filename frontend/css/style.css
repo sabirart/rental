@@ -470,34 +470,3 @@ body.dark-mode .notif-item.notif-urgent{background:#3a1f1f}
 @media (max-width: 480px){
     .data-io-panel{width:100%;max-width:100%}
 }
-
-/* v2.0 auth identity presentation */
-.auth-info {
-    display:flex !important;
-    flex-direction:column;
-    align-items:flex-start;
-    justify-content:center;
-    min-width:0;
-    line-height:1.2;
-}
-.auth-avatar {
-    overflow:hidden;
-    position:relative;
-    border:1px solid var(--border-light);
-}
-.auth-avatar img {
-    width:100%;
-    height:100%;
-    display:block;
-    object-fit:cover;
-}
-.auth-status-badge {
-    display:inline-flex;
-    align-items:center;
-}
-@media (max-width:768px) {
-    .auth-bar { padding:8px 12px; }
-    .auth-bar-left { min-width:0; flex:1 1 auto; }
-    .auth-info { min-width:0; max-width:calc(100vw - 150px); }
-    .auth-name, .auth-email { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-}

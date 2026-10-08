@@ -12,8 +12,8 @@
     </style>
     <title>Rental Manager · Free Property Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
-    <link rel="stylesheet" href="css/style.css?v=v10" />
-    <link rel="stylesheet" href="css/web_style.css?v=v10" />
+    <link rel="stylesheet" href="css/style.css?v=v9" />
+    <link rel="stylesheet" href="css/web_style.css?v=v9" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">    
@@ -698,7 +698,7 @@
         <div class="modal-content modal-large">
             <div class="modal-header">
                 <h3 id="documentModalTitle">Documents</h3>
-                <button class="modal-close" onclick="document.getElementById('documentModal').classList.remove('active')" aria-label="Close documents">&times;</button>
+                <button class="modal-close" onclick="App.closeDocumentModal()" aria-label="Close documents">&times;</button>
             </div>
             <div class="modal-body" id="documentModalBody">
                 <!-- Documents will be displayed here -->
@@ -994,14 +994,8 @@
     <div class="modal-overlay" id="manageAccountModal">
         <div class="auth-modal-box">
             <button class="close" id="manageAccountClose">&times;</button>
-            <div class="manage-account-profile">
-                <div class="manage-account-avatar" id="manageAccountAvatar" aria-hidden="true">U</div>
-                <div class="manage-account-profile-copy">
-                    <h2>Manage Account</h2>
-                    <p class="sub" id="manageAccountEmail">&nbsp;</p>
-                    <span class="manage-account-provider" id="manageAccountProvider"></span>
-                </div>
-            </div>
+            <h2>Manage Account</h2>
+            <p class="sub" id="manageAccountEmail">&nbsp;</p>
 
             <div class="manage-account-tabs" id="manageAccountTabs">
                 <button type="button" class="manage-account-tab active" data-tab="details">Account Details</button>
@@ -1077,30 +1071,38 @@
     </div>
     </div>
 
+    <style>
+      .document-view-card{border:1px solid var(--border-light);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--bg-card,#fff)}
+      .document-view-card-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+      .document-view-card-header div{display:flex;flex-direction:column;gap:3px;min-width:0}.document-view-card-header span{color:var(--text-light);font-size:.78rem}
+      .document-preview{width:100%;border-radius:8px;overflow:hidden;background:var(--bg-hover,#f5f5f5);display:flex;align-items:center;justify-content:center;min-height:80px}
+      .document-image-preview img{display:block;max-width:100%;max-height:60vh;object-fit:contain}.document-pdf-preview{height:65vh}.document-pdf-preview iframe{width:100%;height:100%;border:0;background:#fff}
+      .document-file-preview{padding:28px;flex-direction:column;gap:8px;text-align:center;color:var(--text-light)}.document-file-icon{font-weight:700;letter-spacing:.08em}
+      @media(max-width:640px){.document-view-card-header{align-items:flex-start}.document-pdf-preview{height:55vh}}
+    </style>
     <!-- Scripts -->
-    <!-- Capacitor native bridge: no-op on the regular website, wires native
-         Google Sign-In etc. when running inside the Android app. Must load
-         first since native-auth.js and mobile-native.js depend on its globals. -->
-    <script src="js/api.js?v=v10"></script>
-    <script src="js/auth.js?v=v10"></script>
-    <script src="js/app.js?v=v10"></script>
-    <script src="js/dashboard.js?v=v10"></script>
-    <script src="js/tenants.js?v=v10"></script>
-    <script src="js/properties.js?v=v10"></script>
-    <script src="js/payments.js?v=v10"></script>
-    <script src="js/settings.js?v=v10"></script>
-    <script src="js/notifications.js?v=v10"></script>
-    <script src="js/data-io.js?v=v10"></script>
-    <script src="js/utils.js?v=v10"></script>
-    <script src="js/components.js?v=v10"></script>
-    <script src="js/recycle.js?v=v10"></script>
-    <script src="js/mobile.js?v=v10"></script>
-    <script src="js/sample-data.js?v=v10"></script>
-    <script src="js/auth-ui.js?v=v10"></script>
-    <script src="js/manage-account.js?v=v10"></script>
-    <script src="js/web_script.js?v=v10"></script>
-    <script src="js/animation.js?v=v10"></script>
-    <script src="js/site-controller.js?v=v10"></script>
-    <script src="js/overlay-back-guard.js?v=v10"></script>
+    <!-- Application scripts -->
+    <script src="js/api.js?v=v9"></script>
+    <script src="js/auth.js?v=v9"></script>
+    <script src="js/app.js?v=v9"></script>
+    <script src="js/dashboard.js?v=v9"></script>
+    <script src="js/tenants.js?v=v9"></script>
+    <script src="js/properties.js?v=v9"></script>
+    <script src="js/payments.js?v=v9"></script>
+    <script src="js/settings.js?v=v9"></script>
+    <script src="js/notifications.js?v=v9"></script>
+    <script src="js/data-io.js?v=v9"></script>
+    <script src="js/utils.js?v=v9"></script>
+    <script src="js/components.js?v=v9"></script>
+    <script src="js/recycle.js?v=v9"></script>
+    <script src="js/mobile.js?v=v9"></script>
+    <script src="js/sample-data.js?v=v9"></script>
+    <script src="js/auth-ui.js?v=v9"></script>
+    <script src="js/manage-account.js?v=v9"></script>
+    <script src="js/web_script.js?v=v9"></script>
+    <script src="js/animation.js?v=v9"></script>
+    <script src="js/site-controller.js?v=v9"></script>
+    <script src="js/overlay-back-guard.js?v=v9"></script>
+    <script src="js/interaction-guard.js?v=v10"></script>
 </body>
 </html>

@@ -303,18 +303,29 @@ const App = {
         if (modal) modal.classList.remove('active');
         const documentModal = document.getElementById('documentModal');
         if (documentModal) documentModal.classList.remove('active');
+        document.body.style.overflow = '';
+        this._syncOverlayScrollLock();
+    },
+
+    closeDocumentModal() {
+        const modal = document.getElementById('documentModal');
+        if (modal) modal.classList.remove('active');
+        const body = document.getElementById('documentModalBody');
+        if (body) body.innerHTML = '';
         this._syncOverlayScrollLock();
     },
 
     _syncOverlayScrollLock() {
-        const authOpen = !!document.querySelector('.modal-overlay.active');
-        const appModalOpen = !!document.querySelector('.modal.active');
-        const popupOpen = !!document.querySelector('.popup-overlay, .loading-overlay');
-        const panelOpen =
+        const open = !!(
+            document.querySelector('.modal.active') ||
+            document.querySelector('.modal-overlay.active') ||
+            document.querySelector('.popup-overlay') ||
+            document.querySelector('.tenant-details-overlay') ||
+            document.querySelector('.recycle-overlay') ||
             document.getElementById('notifPanel')?.style.display === 'flex' ||
-            document.getElementById('dataExportPanel')?.style.display === 'flex' ||
-            !!document.getElementById('recycleOverlay');
-        document.body.style.overflow = (authOpen || appModalOpen || popupOpen || panelOpen) ? 'hidden' : '';
+            document.getElementById('dataExportPanel')?.style.display === 'flex'
+        );
+        document.body.style.overflow = open ? 'hidden' : '';
     },
     
     async refreshData() {
@@ -399,37 +410,32 @@ window.closeAllOverlays = function (exceptId) {
         if (modal.id !== exceptId) modal.classList.remove('active');
     });
 
-    const notifPanel = document.getElementById('notifPanel');
-    const notifOverlay = document.getElementById('notifPanelOverlay');
     if (exceptId !== 'notifPanel') {
-        if (notifPanel) notifPanel.style.display = 'none';
-        if (notifOverlay) notifOverlay.style.display = 'none';
+        const notifPanel = document.getElementById('notifPanel');
+        const notifOverlay = document.getElementById('notifPanelOverlay');
+        if (notifPanel && notifPanel.style.display !== 'none') notifPanel.style.display = 'none';
+        if (notifOverlay && notifOverlay.style.display !== 'none') notifOverlay.style.display = 'none';
     }
 
-    const dataPanel = document.getElementById('dataExportPanel');
-    const dataOverlay = document.getElementById('dataExportOverlay');
     if (exceptId !== 'dataExportPanel') {
-        if (dataPanel) dataPanel.style.display = 'none';
-        if (dataOverlay) dataOverlay.style.display = 'none';
+        const dataPanel = document.getElementById('dataExportPanel');
+        const dataOverlay = document.getElementById('dataExportOverlay');
+        if (dataPanel && dataPanel.style.display !== 'none') dataPanel.style.display = 'none';
+        if (dataOverlay && dataOverlay.style.display !== 'none') dataOverlay.style.display = 'none';
     }
 
-    if (exceptId !== 'recycleOverlay' && window.Recycle && typeof Recycle.closeOverlay === 'function') {
+    if (exceptId !== 'recycleOverlay' && window.Recycle) {
         Recycle.closeOverlay();
     }
 
-    if (exceptId !== 'modal') {
-        const modal = document.getElementById('modal');
-        if (modal) modal.classList.remove('active');
-    }
-    if (exceptId !== 'documentModal') {
-        const documentModal = document.getElementById('documentModal');
-        if (documentModal) documentModal.classList.remove('active');
-    }
-
-    if (window.App && typeof App._syncOverlayScrollLock === 'function') {
-        App._syncOverlayScrollLock();
-    } else {
-        const anyOpen = document.querySelector('.modal-overlay.active, .modal.active, .popup-overlay, .loading-overlay');
-        document.body.style.overflow = anyOpen ? 'hidden' : '';
+    // Any of the above may have set body scroll-lock; only the still-open
+    // overlay (if any) should be allowed to keep it locked, so recompute
+    // from what's actually visible rather than blindly clearing it.
+    const stillOpen = document.querySelector('.modal-overlay.active')
+        || (document.getElementById('notifPanel')?.style.display === 'flex')
+        || (document.getElementById('dataExportPanel')?.style.display === 'flex')
+        || document.getElementById('recycleOverlay');
+    if (!stillOpen) {
+        document.body.style.overflow = '';
     }
 };

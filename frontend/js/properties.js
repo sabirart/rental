@@ -936,9 +936,6 @@ const Properties = {
                     <h4 style="margin-bottom: 12px;">Room List</h4>
                     ${roomsHtml}
                 </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-primary" onclick="App.closeModal()">Close</button>
-                </div>
             `;
             
             App.openModal('Manage Rooms', form);

@@ -360,20 +360,14 @@ const authController = {
             let user = await User.findByEmail(email);
             
             if (user) {
-                // Always refresh the Google identity/photo when the user signs
-                // in with Google. Older accounts may have been linked before
-                // profile photos were stored, and Google photos can change.
-                const { run } = require('../config/database');
-                await run(
-                    `UPDATE users
-                     SET google_id = ?,
-                         profile_pic = COALESCE(?, profile_pic),
-                         name = COALESCE(NULLIF(?, ''), name),
-                         is_verified = 1,
-                         updated_at = CURRENT_TIMESTAMP
-                     WHERE id = ?`,
-                    [googleId, picture, name, user.id]
-                );
+                if (!user.google_id) {
+                    // Update user with google_id
+                    const { run } = require('../config/database');
+                    await run(
+                        'UPDATE users SET google_id = ?, profile_pic = COALESCE(?, profile_pic), updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                        [googleId, picture, user.id]
+                    );
+                }
             } else {
                 // Create new user
                 const userId = generateId();

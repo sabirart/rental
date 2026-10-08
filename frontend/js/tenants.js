@@ -1033,8 +1033,12 @@ const Tenants = {
         });
 
         overlay.querySelector('[data-action="call"]').addEventListener('click', () => {
-            window.location.href = `tel:${dialNumber}`;
-            close();
+            try {
+                const telUrl = `tel:${dialNumber}`;
+                window.location.href = telUrl;
+            } finally {
+                setTimeout(close, 150);
+            }
         });
     },
     
@@ -1982,8 +1986,8 @@ const Tenants = {
         Components.showConfirm(
             'Remove Document',
             'Are you sure you want to remove this document?',
-            'Cancel',
             'Remove',
+            'Cancel',
             'danger',
             async () => {
                 try {
@@ -2036,15 +2040,26 @@ const Tenants = {
         let html = `<h4>Documents for ${escapeHTML(tenant.name)}</h4><div style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">`;
         
         documents.forEach((doc) => {
-            const isImage = doc.type && doc.type.startsWith('image/');
+            const type = String(doc.type || '').toLowerCase();
+            const name = String(doc.name || 'Document');
+            const safeData = escapeHTML(doc.data || '');
+            const isImage = type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(name);
+            const isPdf = type === 'application/pdf' || /\.pdf$/i.test(name);
+            let preview = '';
+            if (isImage) {
+                preview = `<div class="document-preview document-image-preview"><img src="${safeData}" alt="${escapeHTML(name)}"></div>`;
+            } else if (isPdf) {
+                preview = `<div class="document-preview document-pdf-preview"><iframe src="${safeData}" title="${escapeHTML(name)}"></iframe></div>`;
+            } else {
+                preview = `<div class="document-preview document-file-preview"><div class="document-file-icon">DOC</div><p>This file type cannot be previewed directly in the browser.</p></div>`;
+            }
             html += `
-                <div style="border: 1px solid var(--border-light); border-radius: 8px; padding: 12px 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong>${escapeHTML(doc.name)}</strong>
-                        <span style="color: var(--text-light); font-size: 0.8rem;">${getFileSize(doc.size)}</span>
+                <div class="document-view-card">
+                    <div class="document-view-card-header">
+                        <div><strong>${escapeHTML(name)}</strong><span>${getFileSize(doc.size)}</span></div>
+                        <a href="${safeData}" download="${escapeHTML(name)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">Download</a>
                     </div>
-                    ${isImage ? `<img src="${escapeHTML(doc.data)}" style="max-width: 100%; max-height: 300px; border-radius: 4px;">` : 
-                    `<a href="${escapeHTML(doc.data)}" download="${escapeHTML(doc.name)}" class="btn btn-sm btn-outline">Download ${escapeHTML(doc.name)}</a>`}
+                    ${preview}
                 </div>
             `;
         });
@@ -2053,8 +2068,13 @@ const Tenants = {
         
         const modal = document.getElementById('documentModal');
         const body = document.getElementById('documentModalBody');
+        if (!modal || !body) {
+            showNotification('Document viewer is unavailable', 'error');
+            return;
+        }
         body.innerHTML = html;
         modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
     },
     
     async deleteTenant(id) {

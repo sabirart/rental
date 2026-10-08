@@ -126,7 +126,7 @@ const Components = {
     },
     
     showInfo(message, buttonText = 'OK') { return this.showAlert('Info', message, buttonText, 'primary'); },
-    showSuccess(message, buttonText = 'OK') { return this.showAlert('Success', message, buttonText, 'success'); },
+    showSuccess(message, buttonText = 'OK') { this.showToast(message, 'success'); },
     showError(message, buttonText = 'OK') { return this.showAlert('Error', message, buttonText, 'danger'); },
     showWarning(message, buttonText = 'OK') { return this.showAlert('Warning', message, buttonText, 'warning'); },
     

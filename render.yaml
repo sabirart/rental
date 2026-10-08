@@ -24,3 +24,5 @@ services:
       # Connection string). No disk needed - the database is external.
       - key: DATABASE_URL
         sync: false
+      - key: DATABASE_IPV4
+        value: 'true'

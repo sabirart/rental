@@ -30,33 +30,25 @@ const DashboardAuthBar = {
         
         if (isAuthenticated && user) {
             if (avatar) {
-                const fallback = escapeHTML((user.name || user.email || 'U').charAt(0).toUpperCase());
                 if (user.profilePic) {
-                    avatar.innerHTML = `<img src="${escapeHTML(user.profilePic)}" alt="${escapeHTML(user.name || 'Profile')}" loading="eager" referrerpolicy="no-referrer" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;" onerror="this.remove(); this.parentElement.textContent='${fallback}';">`;
-                    avatar.classList.add('has-image');
+                    avatar.innerHTML = `<img src="${escapeHTML(user.profilePic)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
                 } else {
-                    avatar.classList.remove('has-image');
-                    avatar.textContent = fallback;
+                    avatar.textContent = (user.name || 'U').charAt(0).toUpperCase();
                 }
-                avatar.title = user.email || user.name || 'Profile';
             }
             if (nameEl) nameEl.textContent = user.name || 'User';
-            if (emailEl) {
-                emailEl.textContent = user.email || '';
-                emailEl.style.display = user.email ? 'block' : 'none';
-                emailEl.title = user.email || '';
-            }
+            if (emailEl) emailEl.textContent = user.email || user.googleEmail || '';
             if (statusBadge) {
-                statusBadge.textContent = user.googleId ? 'Google account' : 'Account';
-                statusBadge.className = `badge ${user.googleId ? 'badge-info' : 'badge-success'}`;
-                statusBadge.style.display = 'inline-flex';
+                statusBadge.textContent = user.provider === 'google' ? 'Google Account' : 'Signed in';
+                statusBadge.className = 'badge badge-success';
+                statusBadge.style.display = '';
             }
             if (loginBtn) loginBtn.style.display = 'none';
             if (registerBtn) registerBtn.style.display = 'none';
             if (profileBtn) profileBtn.style.display = 'inline-flex';
             if (logoutBtn) logoutBtn.style.display = 'inline-flex';
         } else {
-            if (avatar) avatar.textContent = '?';
+            if (avatar) { avatar.innerHTML = '<span>?</span>'; }
             if (nameEl) nameEl.textContent = 'Guest';
             if (emailEl) emailEl.textContent = '';
             if (statusBadge) {

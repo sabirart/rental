@@ -44,12 +44,21 @@ if (!connectionString) {
 // genuinely local/unencrypted dev database.
 const useSSL = process.env.DATABASE_SSL !== 'false';
 
+// Render's outbound network on some service plans/environments is IPv4-only,
+// while managed Postgres providers can return an IPv6 address first. Node's
+// default resolver may therefore select an unreachable AAAA address and fail
+// with ENETUNREACH before it ever tries the working IPv4 address. Prefer IPv4
+// when explicitly enabled (the Render-safe default). Set DATABASE_IPV4=false
+// only when your database endpoint is intentionally IPv6-only.
+const preferIPv4 = process.env.DATABASE_IPV4 !== 'false';
+
 const pool = new Pool({
     connectionString,
+    ...(preferIPv4 ? { family: 4 } : {}),
     ssl: useSSL ? { rejectUnauthorized: false } : false,
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 15000,
 });
 
 pool.on('error', (err) => {
@@ -306,9 +315,6 @@ async function migrateTables() {
         `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS user_id TEXT`,
         `ALTER TABLE payments ADD COLUMN IF NOT EXISTS user_id TEXT`,
         `ALTER TABLE recycle_bin ADD COLUMN IF NOT EXISTS user_id TEXT`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_pic TEXT`,
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified INTEGER DEFAULT 0`,
     ];
 
     for (const sql of alterations) {
@@ -350,6 +356,10 @@ async function initDatabase() {
         await migrateTables();
     } catch (err) {
         console.error('FATAL: Could not initialize Postgres database:', err.message);
+        if (err && err.code === 'ENETUNREACH') {
+            console.error('Database network hint: the configured Postgres endpoint resolved to an unreachable address.');
+            console.error('This build prefers IPv4 (DATABASE_IPV4=true). If your provider only exposes IPv6, use its IPv4-compatible/pooler connection URL or set DATABASE_IPV4=false.');
+        }
         process.exit(1);
     }
 }

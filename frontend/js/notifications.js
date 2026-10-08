@@ -4,6 +4,17 @@
 const Notifications = {
     _enabled: true,
     _items: [],
+    _allItems: [],
+    _readKey() {
+        const userId = (window.Auth && Auth.user && (Auth.user.id || Auth.user.userId || Auth.user.email)) || 'guest';
+        return `rental_notifications_read:${userId}`;
+    },
+    _getReadIds() {
+        try { return new Set(JSON.parse(localStorage.getItem(this._readKey()) || '[]')); } catch (_) { return new Set(); }
+    },
+    _saveReadIds(ids) {
+        localStorage.setItem(this._readKey(), JSON.stringify(Array.from(ids).slice(-500)));
+    },
 
     async init() {
         await this.loadSettings();
@@ -39,7 +50,7 @@ const Notifications = {
         document.getElementById('notifPanelClose')?.addEventListener('click', () => this.hidePanel());
         document.getElementById('notifPanelOverlay')?.addEventListener('click', () => this.hidePanel());
         
-        // "Mark all as read" - clears all notifications and hides the badge
+        // Marking notifications read persists across reloads and section changes.
         document.getElementById('notifMarkAllRead')?.addEventListener('click', () => this.markAllRead());
     },
 
@@ -85,19 +96,23 @@ const Notifications = {
         document.getElementById('notifPanelOverlay').style.display = 'none';
     },
 
-    // Mark all notifications as read - clears the list and hides the badge
+    // Mark all current notifications as read and persist that state.
     markAllRead() {
+        const read = this._getReadIds();
+        this._allItems.forEach(item => read.add(item.id));
+        this._saveReadIds(read);
         this._items = [];
         this._renderBadge();
         this._renderPanel();
-        // Also hide the panel if it's open (optional - user might want to see empty state)
-        // We keep it open showing "You're all caught up"
+        if (typeof showNotification === 'function') showNotification('Notifications marked as read', 'success');
     },
 
     // Recompute the notification list from current App state and re-render
     // the bell badge + (if open) the panel body.
     refresh() {
-        this._items = this._enabled ? this._computeNotifications() : [];
+        this._allItems = this._enabled ? this._computeNotifications() : [];
+        const read = this._getReadIds();
+        this._items = this._allItems.filter(item => !read.has(item.id));
         this._renderBadge();
         this._renderPanel();
     },
@@ -116,6 +131,7 @@ const Notifications = {
                 if (!isNaN(endDate.getTime()) && endDate <= in7Days) {
                     const overdue = endDate < now;
                     items.push({
+                        id: `lease:${tenant.id}:${tenant.lease_end_date}`,
                         type: 'lease',
                         urgent: overdue,
                         icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
@@ -131,6 +147,7 @@ const Notifications = {
             const pending = tenantPayments.find(p => p.status === 'unpaid' || p.status === 'partial');
             if (pending) {
                 items.push({
+                    id: `payment:${pending.id || `${tenant.id}:${pending.month}:${pending.year}`}:${pending.status}:${pending.total_payment}`,
                     type: 'payment',
                     urgent: pending.status === 'unpaid',
                     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M15 9.5c0-1.4-1.3-2.5-3-2.5s-3 1.1-3 2.5 1.3 2 3 2.5 3 1.1 3 2.5-1.3 2.5-3 2.5-3-1.1-3-2.5"/></svg>',

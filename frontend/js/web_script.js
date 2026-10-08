@@ -38,13 +38,9 @@
     }
 
     function closeModal(modal) {
-        if (!modal) return;
-        modal.classList.remove('active');
-        modal.setAttribute('aria-hidden', 'true');
-        if (window.App && typeof App._syncOverlayScrollLock === 'function') {
-            App._syncOverlayScrollLock();
-        } else {
-            document.body.style.overflow = document.querySelector('.modal-overlay.active') ? 'hidden' : '';
+        if (modal) {
+            modal.classList.remove('active');
+            document.body.style.overflow = '';
         }
     }
 
@@ -322,12 +318,19 @@ async function handleGoogleLogin() {
 }
 
     // ===== CLOSE MODALS =====
-    // SiteController owns global auth-overlay dismissal. Keep a local fallback
-    // only for pages where it has not initialized yet.
-    document.querySelectorAll('#authModalsRoot .modal-overlay').forEach(modal => {
-        modal.setAttribute('aria-hidden', modal.classList.contains('active') ? 'false' : 'true');
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+                closeModal(modal);
+            });
+        }
+    });
+
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', function(e) {
-            if (e.target === this) closeModal(this);
+            if (e.target === this) {
+                closeModal(this);
+            }
         });
     });
 
