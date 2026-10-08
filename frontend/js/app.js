@@ -15,8 +15,6 @@ const App = {
     
     _initialized: false,
 
-    _keepAliveInterval: null,
-
     async init() {
         if (this._initialized) return;
         this._initialized = true;
@@ -26,16 +24,8 @@ const App = {
         this.setupModal();
         this.setupNetworkListeners();
         this.setupAuthListener();
-        this.setupVisibilityRefresh();
-        this.startKeepAlive();
-
-        // Show whatever's cached instantly, then go fetch the latest data
-        // in the background without blocking the first render or showing
-        // a loading spinner over data the user can already see.
-        this.loadFromLocalStorage();
+        await this.loadData();
         this.renderCurrentView();
-        this.loadData({ silent: true });
-
         if (typeof Notifications !== 'undefined') {
             await Notifications.init();
         }
@@ -77,13 +67,9 @@ const App = {
             }
         }
     },
-    // options.silent = true: used for background refreshes (initial load,
-    // tab-focus refresh, keep-alive-triggered refresh) - cached data is
-    // already on screen, so no loading spinner and no "please login" toast
-    // on failure; the user simply keeps seeing whatever was last cached.
-    async loadData(options = {}) {
-        const silent = options.silent === true;
-        if (!silent) this.showLoading();
+    // Replace the loadData method
+    async loadData() {
+        this.showLoading();
         try {
             // Check if in demo mode
             if (isDemoMode()) {
@@ -93,8 +79,7 @@ const App = {
                 this.state.properties = sampleData.properties || [];
                 this.state.payments = sampleData.payments || [];
                 this.saveToLocalStorage();
-                if (!silent) this.hideLoading();
-                if (silent) this.renderCurrentView();
+                this.hideLoading();
                 return;
             }
             
@@ -108,45 +93,16 @@ const App = {
             this.state.properties = propertiesRes.data || [];
             this.state.payments = paymentsRes.data || [];
             this.saveToLocalStorage();
-            // Silent refreshes still need to update the screen once the
-            // fresher data arrives - just without the loading spinner/toast
-            // that a foreground load would show.
-            if (silent) this.renderCurrentView();
         } catch (error) {
             console.error('Failed to load data:', error);
             this.loadFromLocalStorage();
-            if (!silent) showNotification('Please login to save your data permanently', 'info');
+            showNotification('Please login to save your data permanently', 'info');
         } finally {
-            if (!silent) this.hideLoading();
+            this.hideLoading();
             if (typeof Notifications !== 'undefined' && Notifications._enabled !== undefined) {
                 Notifications.refresh();
             }
         }
-    },
-
-    // Refreshes automatically the moment the user switches back to this
-    // tab (rather than waiting for a manual refresh), same silent
-    // cached-first behavior as the initial load.
-    setupVisibilityRefresh() {
-        const handler = () => {
-            if (document.visibilityState === 'visible' && document.body.classList.contains('dashboard-active')) {
-                this.loadData({ silent: true });
-            }
-        };
-        document.addEventListener('visibilitychange', handler);
-        this._eventListeners.push({ target: document, event: 'visibilitychange', handler });
-    },
-
-    // Pings the backend every 10 minutes while the app is open so the
-    // server/session stays warm instead of going cold and forcing a slow
-    // (or failed) request the next time the user actually does something.
-    startKeepAlive() {
-        if (this._keepAliveInterval) clearInterval(this._keepAliveInterval);
-        this._keepAliveInterval = setInterval(() => {
-            if (typeof API !== 'undefined' && typeof API.keepAlive === 'function') {
-                API.keepAlive();
-            }
-        }, 10 * 60 * 1000);
     },
 
     saveToLocalStorage() {
@@ -354,7 +310,6 @@ const App = {
         this._eventListeners.forEach(({ target, event, handler }) => target.removeEventListener(event, handler));
         this._eventListeners = [];
         if (this._refreshTimeout) { clearTimeout(this._refreshTimeout); this._refreshTimeout = null; }
-        if (this._keepAliveInterval) { clearInterval(this._keepAliveInterval); this._keepAliveInterval = null; }
     }
 };
 

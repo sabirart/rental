@@ -105,25 +105,16 @@ const API = {
 
                         if (!this._sessionExpiredNotified) {
                             this._sessionExpiredNotified = true;
-                            this._showSessionExpiredAlert();
+                            if (typeof showNotification === 'function') {
+                                showNotification('Your session has expired. Log in again to keep saving changes.', 'warning');
+                            }
                             // Give the API a fresh shot at re-notifying if the
                             // user does log back in and it expires again later.
                             setTimeout(() => { this._sessionExpiredNotified = false; }, 60000);
                         }
                         throw new Error('Session expired. Please login again.');
                     }
-
-                    // 503 (Service Unavailable) / 504 (Gateway Timeout) usually
-                    // mean the backend is temporarily unreachable/cold-starting
-                    // rather than a real failure, so auto-retry with backoff
-                    // before giving up and falling back to cached data.
-                    if ((response.status === 503 || response.status === 504) && attempt < retries) {
-                        const delay = 1000 * (attempt + 1);
-                        console.log(`Got ${response.status}, auto-retrying in ${delay}ms...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                        continue;
-                    }
-
+                    
                     throw new Error(errorMessage);
                 }
 
@@ -163,67 +154,6 @@ const API = {
         } catch (error) {
             return false;
         }
-    },
-
-    // Lightweight ping used purely to keep the backend/session warm while
-    // the app is open (see App._startKeepAlive in app.js, called every 10
-    // minutes). Deliberately swallows all errors - a failed keep-alive
-    // ping should never surface to the user.
-    async keepAlive() {
-        try {
-            await this.healthCheck();
-        } catch (e) {}
-    },
-
-    // A blocking, dismiss-free alert shown once a session is confirmed
-    // expired (after the 401 retry above). Gives the user two explicit
-    // ways forward: refresh the page (in case it was a transient blip) or
-    // jump straight to the login modal - all their cached data stays on
-    // screen either way.
-    _showSessionExpiredAlert() {
-        if (document.getElementById('sessionExpiredAlert')) return;
-
-        if (!document.getElementById('sessionExpiredAlertStyles')) {
-            const style = document.createElement('style');
-            style.id = 'sessionExpiredAlertStyles';
-            style.textContent = `
-                #sessionExpiredAlert { position:fixed; inset:0; z-index:999999; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:20px; }
-                #sessionExpiredAlert .session-expired-box { background:#fff; border-radius:12px; max-width:360px; width:100%; padding:24px; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,.2); }
-                #sessionExpiredAlert h3 { margin:0 0 8px; font-size:1.1rem; }
-                #sessionExpiredAlert p { margin:0 0 18px; color:#666; font-size:.9rem; }
-                #sessionExpiredAlert .session-expired-actions { display:flex; gap:10px; }
-                #sessionExpiredAlert .session-expired-actions button { flex:1; padding:10px; border-radius:6px; border:none; font-size:.9rem; cursor:pointer; }
-                #sessionExpiredAlert .session-refresh-btn { background:#f1f1f1; color:#1a1a1a; }
-                #sessionExpiredAlert .session-login-btn { background:var(--primary, #1a1a1a); color:#fff; }
-            `;
-            document.head.appendChild(style);
-        }
-
-        const box = document.createElement('div');
-        box.id = 'sessionExpiredAlert';
-        box.innerHTML = `
-            <div class="session-expired-box">
-                <h3>Session expired</h3>
-                <p>Your session has expired. Your data is still saved locally - refresh to try again, or log in to keep saving changes.</p>
-                <div class="session-expired-actions">
-                    <button type="button" class="session-refresh-btn">Refresh</button>
-                    <button type="button" class="session-login-btn">Login</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(box);
-
-        box.querySelector('.session-refresh-btn').addEventListener('click', () => {
-            window.location.reload();
-        });
-        box.querySelector('.session-login-btn').addEventListener('click', () => {
-            box.remove();
-            if (window.Auth && typeof Auth.clear === 'function') Auth.clear();
-            document.body.classList.remove('dashboard-active', 'returning-user');
-            if (window.SiteController && typeof SiteController.openAuthModal === 'function') {
-                SiteController.openAuthModal('login');
-            }
-        });
     },
 
     // Clear all data endpoints

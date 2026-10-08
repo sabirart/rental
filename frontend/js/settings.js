@@ -259,10 +259,15 @@ const Settings = {
 
     updateAccountCard() {
         const body = document.getElementById('accountCardBody');
+        const badge = document.getElementById('accountStatusBadge');
         if (!body) return;
         
         if (Auth.isAuthenticated && Auth.user) {
             const user = Auth.user;
+            if (badge) {
+                badge.textContent = user.name || 'User';
+                badge.className = 'badge badge-success';
+            }
             
             body.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
@@ -271,7 +276,11 @@ const Settings = {
                     </div>
                     <div style="flex: 1;">
                         <div style="font-weight: 500; font-size: 1.05rem;">${user.name || 'User'}</div>
-                        <div style="color: var(--text-light); font-size: 0.85rem;">${user.email || ''}</div>
+                        <div style="color: var(--text-light); font-size: 0.85rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span>${user.email || ''}</span>
+                            <span class="badge ${user.isVerified ? 'badge-success' : 'badge-warning'}" style="font-size: 0.6rem;">${user.isVerified ? 'Verified' : 'Unverified'}</span>
+                            ${user.googleId ? '<span class="badge badge-info" style="font-size: 0.6rem;">Google</span>' : ''}
+                        </div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button class="btn btn-sm btn-outline" onclick="DashboardAuthBar.showProfile()">Manage Account</button>
@@ -280,6 +289,11 @@ const Settings = {
                 </div>
             `;
         } else {
+            if (badge) {
+                badge.textContent = 'Guest';
+                badge.className = 'badge badge-warning';
+            }
+            
             body.innerHTML = `
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div>
@@ -328,23 +342,12 @@ const Settings = {
             exportedAt: new Date().toISOString(),
             version: '1.0.0'
         };
-        const filename = `rental_data_${new Date().toISOString().split('T')[0]}.json`;
-
-        if (window.NativeExport && window.NativeExport.isNative()) {
-            window.NativeExport.downloadJson(filename, data)
-                .then(() => showNotification('Data exported successfully', 'success'))
-                .catch(err => {
-                    console.error('Native export failed:', err);
-                    showNotification('Could not export data: ' + (err.message || err), 'error');
-                });
-            return;
-        }
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
+        a.download = `rental_data_${new Date().toISOString().split('T')[0]}.json`;
         a.click();
         URL.revokeObjectURL(url);
         showNotification('Data exported successfully', 'success');

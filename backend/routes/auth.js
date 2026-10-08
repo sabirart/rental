@@ -43,14 +43,7 @@ router.post('/login', [
 ], authController.login);
 
 router.post('/google-login', [
-    // Accept either a web access token (browser flow) or an idToken
-    // (native Android app flow) - authController validates whichever is sent.
-    body().custom((value, { req }) => {
-        if (!req.body.token && !req.body.idToken) {
-            throw new Error('Google token is required');
-        }
-        return true;
-    }),
+    body('token').notEmpty().withMessage('Google token is required'),
     validate
 ], authController.googleLogin);
 
@@ -75,11 +68,7 @@ router.put('/profile', authMiddleware.authenticate, [
 ], authController.updateProfile);
 
 router.post('/change-password', authMiddleware.authenticate, [
-    // Optional at the validation layer - the controller enforces it only
-    // when the account already has a password to verify against (accounts
-    // without one yet, e.g. Google-only accounts, are creating their
-    // first password and have nothing to verify).
-    body('currentPassword').optional({ nullable: true, checkFalsy: true }),
+    body('currentPassword').notEmpty().withMessage('Current password is required'),
     body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
     validate
 ], authController.changePassword);

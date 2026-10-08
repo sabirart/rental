@@ -1,5 +1,5 @@
 // js/data-io.js - Data Export/Import overlay:
-// export all / by month / PDF receipt, and JSON import.
+// export all / by month / by tenant / PDF receipt, and JSON import.
 
 const DataIO = {
     init() {
@@ -25,9 +25,9 @@ const DataIO = {
         document.getElementById('importConfirmBtn')?.addEventListener('click', () => this.handleImport());
     },
 
-    openPanel(mode, tenantId) {
+    openPanel(mode) {
         if (window.closeAllOverlays) window.closeAllOverlays('dataExportPanel');
-        this.populateSelects(tenantId);
+        this.populateSelects();
         document.getElementById('dataIoTitle').textContent = mode === 'import' ? 'Import Data' : 'Export Data';
         document.getElementById('dataExportView').style.display = mode === 'import' ? 'none' : 'block';
         document.getElementById('dataImportView').style.display = mode === 'import' ? 'block' : 'none';
@@ -40,9 +40,10 @@ const DataIO = {
         document.getElementById('dataExportOverlay').style.display = 'none';
     },
 
-    populateSelects(tenantId) {
+    populateSelects() {
         const monthSelect = document.getElementById('exportMonthSelect');
         const yearSelect = document.getElementById('exportYearSelect');
+        const tenantSelect = document.getElementById('exportTenantSelect');
         const receiptSelect = document.getElementById('receiptPaymentSelect');
 
         if (monthSelect && monthSelect.options.length === 0) {
@@ -68,28 +69,21 @@ const DataIO = {
             yearSelect.value = String(currentYear);
         }
 
+        const tenants = (App.state && App.state.tenants) || [];
+        if (tenantSelect) {
+            tenantSelect.innerHTML = tenants.map(t => `<option value="${t.id}">${escapeHTML(t.name)}</option>`).join('') || '<option value="">No tenants</option>';
+        }
+
         const payments = (App.state && App.state.payments) || [];
         if (receiptSelect) {
-            // When opened as a shortcut from a specific tenant's detail
-            // overlay, jump straight to just their receipts instead of
-            // the full list - falls back to everyone's when opened from
-            // Settings as usual (tenantId undefined).
-            const scoped = tenantId ? payments.filter(p => p.tenant_id === tenantId) : payments;
-            const sorted = [...scoped].sort((a, b) => (b.year - a.year) || (b.month - a.month));
+            const sorted = [...payments].sort((a, b) => (b.year - a.year) || (b.month - a.month));
             receiptSelect.innerHTML = sorted.map(p =>
                 `<option value="${p.id}">${escapeHTML(p.tenant_name || 'Tenant')} — ${monthName(p.month)} ${p.year}</option>`
-            ).join('') || `<option value="">No payments${tenantId ? ' for this tenant' : ''}</option>`;
+            ).join('') || '<option value="">No payments</option>';
         }
     },
 
     downloadJson(filename, data) {
-        if (window.NativeExport && window.NativeExport.isNative()) {
-            window.NativeExport.downloadJson(filename, data).catch(err => {
-                console.error('Native export failed:', err);
-                Components.showWarning('Could not export file: ' + (err.message || err));
-            });
-            return;
-        }
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -127,6 +121,21 @@ const DataIO = {
             return;
         }
 
+        if (type === 'tenant') {
+            const tenantId = document.getElementById('exportTenantSelect').value;
+            const tenant = tenants.find(t => t.id === tenantId);
+            if (!tenant) {
+                Components.showWarning('Please select a tenant to export.');
+                return;
+            }
+            const tenantPayments = payments.filter(p => p.tenant_id === tenantId);
+            this.downloadJson(`tenant_${(tenant.name || 'tenant').replace(/\s+/g, '_')}.json`, {
+                tenant, payments: tenantPayments, exportedAt: new Date().toISOString()
+            });
+            showNotification('Tenant export downloaded', 'success');
+            return;
+        }
+
         if (type === 'receipt') {
             const paymentId = document.getElementById('receiptPaymentSelect').value;
             const payment = payments.find(p => p.id === paymentId);
@@ -141,21 +150,12 @@ const DataIO = {
     },
 
     generateReceipt(payment, tenant) {
-        const owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
-
-        if (window.NativeExport && window.NativeExport.isNative()) {
-            window.NativeExport.generateReceiptPdf(payment, tenant, owner).catch(err => {
-                console.error('Native receipt generation failed:', err);
-                Components.showWarning('Could not generate receipt: ' + (err.message || err));
-            });
-            return;
-        }
-
         const win = window.open('', '_blank', 'width=480,height=640');
         if (!win) {
             Components.showWarning('Please allow pop-ups to generate the receipt.');
             return;
         }
+        const owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
         const rows = [
             ['Rent', payment.monthly_rent],
             ['Electricity', payment.electricity],

@@ -27,57 +27,24 @@
 
     function open() {
         const user = Auth.user || {};
+        const isGoogleAccount = !!user.googleId;
 
         $('manageAccountEmail').textContent = user.email || '';
         $('manageAccountName').value = user.name || '';
         $('manageAccountEmailField').value = user.email || '';
 
+        // Google-only accounts have no password to change.
+        const passwordTab = $('manageAccountPasswordTab');
+        if (passwordTab) passwordTab.style.display = isGoogleAccount ? 'none' : '';
+
+        const deletePasswordGroup = $('manageAccountDeletePasswordGroup');
+        if (deletePasswordGroup) deletePasswordGroup.style.display = isGoogleAccount ? 'none' : '';
+
         ['manageAccountDetailsError', 'manageAccountDetailsSuccess', 'manageAccountPasswordError',
          'manageAccountPasswordSuccess', 'manageAccountDeleteError'].forEach(id => hideMsg($(id)));
 
         switchTab('details');
-        applyPasswordState(user);
         SiteController.openAuthModal('manageAccount');
-
-        // hasPassword can be stale on the cached user object (e.g. right
-        // after a Google login before /auth/me has ever been called), so
-        // refresh it in the background and re-apply once we know for sure.
-        if (typeof Auth.fetchMe === 'function') {
-            Auth.fetchMe().then((freshUser) => applyPasswordState(freshUser)).catch(() => {});
-        }
-    }
-
-    // Adjusts the Password tab and Delete-account panel based on whether
-    // the account currently has a password set. Every account - Google or
-    // not - gets the Password tab; accounts without a password see a
-    // "Create Password" flow (no current-password field) instead of
-    // "Change Password", and Delete Account is blocked with a pointer to
-    // that tab until a password exists to confirm the deletion with.
-    function applyPasswordState(user) {
-        const hasPassword = !!(user && user.hasPassword);
-
-        const passwordTab = $('manageAccountPasswordTab');
-        if (passwordTab) passwordTab.textContent = hasPassword ? 'Change Password' : 'Create Password';
-
-        const hint = $('manageAccountPasswordHint');
-        if (hint) hint.style.display = hasPassword ? 'none' : 'block';
-
-        const currentPasswordGroup = $('manageAccountCurrentPasswordGroup');
-        const currentPasswordInput = $('manageAccountCurrentPassword');
-        if (currentPasswordGroup) currentPasswordGroup.style.display = hasPassword ? '' : 'none';
-        if (currentPasswordInput) currentPasswordInput.required = hasPassword;
-
-        const submitBtn = $('manageAccountPasswordSubmitBtn');
-        if (submitBtn) submitBtn.textContent = hasPassword ? 'Change Password' : 'Create Password';
-
-        const deletePasswordGroup = $('manageAccountDeletePasswordGroup');
-        const deleteNoPasswordHint = $('manageAccountDeleteNoPasswordHint');
-        const deleteSubmitBtn = $('manageAccountDeleteSubmitBtn');
-        const deletePasswordInput = $('manageAccountDeletePassword');
-        if (deletePasswordGroup) deletePasswordGroup.style.display = hasPassword ? '' : 'none';
-        if (deleteNoPasswordHint) deleteNoPasswordHint.style.display = hasPassword ? 'none' : 'block';
-        if (deletePasswordInput) deletePasswordInput.required = hasPassword;
-        if (deleteSubmitBtn) deleteSubmitBtn.disabled = !hasPassword;
     }
 
     function close() {
@@ -120,17 +87,10 @@
             hideMsg(errorEl);
             hideMsg(successEl);
 
-            const hasPassword = !!(Auth.user && Auth.user.hasPassword);
             const currentPassword = $('manageAccountCurrentPassword').value;
             const newPassword = $('manageAccountNewPassword').value;
             const confirmPassword = $('manageAccountConfirmPassword').value;
 
-            // For accounts WITHOUT a password, currentPassword is NOT required
-            // For accounts WITH a password, it IS required
-            if (hasPassword && !currentPassword) {
-                showMsg(errorEl, 'Current password is required.');
-                return;
-            }
             if (newPassword.length < 6) {
                 showMsg(errorEl, 'New password must be at least 6 characters.');
                 return;
@@ -141,41 +101,18 @@
             }
 
             try {
-                // Send currentPassword ONLY if the account has one
-                const payload = {};
-                if (hasPassword) {
-                    payload.currentPassword = currentPassword;
-                }
-                payload.newPassword = newPassword;
-                
-                await Auth.changePassword(payload);
-                showMsg(successEl, hasPassword ? 'Password changed successfully.' : 'Password created successfully.');
+                await Auth.changePassword(currentPassword, newPassword);
+                showMsg(successEl, 'Password changed successfully.');
                 $('manageAccountPasswordForm').reset();
-                // The account now definitely has a password - update the
-                // cached user and re-render this panel + the Delete tab so
-                // deletion is no longer blocked.
-                Auth.setUser({ ...Auth.user, hasPassword: true }, Auth._token);
-                applyPasswordState(Auth.user);
             } catch (err) {
                 showMsg(errorEl, err.message || 'Failed to change password.');
             }
-        });
-
-        $('manageAccountGoCreatePassword')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            switchTab('password');
         });
 
         $('manageAccountDeleteForm')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const errorEl = $('manageAccountDeleteError');
             hideMsg(errorEl);
-
-            if (!(Auth.user && Auth.user.hasPassword)) {
-                showMsg(errorEl, 'Please create a password first before deleting your account.');
-                switchTab('password');
-                return;
-            }
 
             const password = $('manageAccountDeletePassword').value;
 

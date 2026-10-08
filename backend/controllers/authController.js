@@ -46,23 +46,6 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-// Verify the transporter config once at startup so a bad/missing
-// EMAIL_USER or EMAIL_PASS (e.g. a regular Gmail password instead of a
-// 16-character Gmail App Password) shows up immediately in the server
-// logs instead of silently failing later on every OTP email.
-transporter.verify((error) => {
-    if (error) {
-        console.error('Email transporter configuration error - OTP emails will NOT be sent:', error.message);
-    } else {
-        console.log('Email transporter ready - OTP emails will be sent from', process.env.EMAIL_USER);
-    }
-});
-
-// Previously this swallowed every failure (caught it, logged it, and
-// returned false) while every call site ignored that return value - so a
-// misconfigured mailer or a rejected address silently produced "OTP sent
-// to your email" responses with no email ever sent. Now it throws so the
-// caller can surface a real error to the user instead of a false success.
 async function sendEmail(to, subject, html) {
     try {
         const info = await transporter.sendMail({
@@ -71,11 +54,11 @@ async function sendEmail(to, subject, html) {
             subject,
             html,
         });
-        console.log('Email sent:', info.messageId, 'to', to);
+        console.log('Email sent:', info.messageId);
         return true;
     } catch (error) {
-        console.error('Email send error (to ' + to + '):', error.message);
-        throw new AppError('Failed to send OTP email. Please double-check the email address and try again in a moment.', 502);
+        console.error('Email send error:', error);
+        return false;
     }
 }
 
@@ -303,9 +286,7 @@ const authController = {
                         id: user.id,
                         name: user.name,
                         email: user.email,
-                        isVerified: user.is_verified === 1,
-                        googleId: user.google_id || null,
-                        hasPassword: !!user.password
+                        isVerified: user.is_verified === 1
                     },
                     token
                 },
@@ -317,50 +298,29 @@ const authController = {
     },
 
     // Google Login
-    // Supports two request shapes so the same endpoint serves both the web
-    // popup flow and the native Android app:
-    //   { token: <access_token> }  - web (Google Identity Services initTokenClient)
-    //   { idToken: <id_token> }    - native (Capacitor @capgo/capacitor-social-login,
-    //                                 which returns an ID token via Credential Manager)
     async googleLogin(req, res, next) {
         try {
-            const { token: googleToken, idToken } = req.body;
-
-            if (!googleToken && !idToken) {
+            const { token: googleToken } = req.body;
+            
+            if (!googleToken) {
                 throw new AppError('Google token is required', 400);
             }
-
-            let email, name, picture, googleId;
-
-            if (idToken) {
-                // Native flow: verify the signed ID token's signature, audience and
-                // issuer with Google's library instead of trusting it blindly.
-                const ticket = await googleClient.verifyIdToken({
-                    idToken,
-                    audience: process.env.GOOGLE_CLIENT_ID
-                });
-                const payload = ticket.getPayload();
-                if (!payload) {
-                    throw new AppError('Invalid Google ID token', 401);
-                }
-                ({ email, name, picture, sub: googleId } = payload);
-            } else {
-                // Web flow: the frontend uses Google's implicit OAuth flow
-                // (initTokenClient), which returns an access_token, not an ID
-                // token/JWT. verifyIdToken() only accepts ID tokens, so we
-                // validate the access_token via Google's userinfo endpoint instead.
-                const userInfoResponse = await fetch(
-                    `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(googleToken)}`
-                );
-
-                if (!userInfoResponse.ok) {
-                    throw new AppError('Invalid or expired Google token', 401);
-                }
-
-                const payload = await userInfoResponse.json();
-                ({ email, name, picture, sub: googleId } = payload);
+            
+            // FIX: the frontend uses Google's implicit OAuth flow (initTokenClient),
+            // which returns an access_token, not an ID token/JWT. verifyIdToken()
+            // only accepts ID tokens, so it always failed here. We now validate the
+            // access_token by calling Google's userinfo endpoint instead.
+            const userInfoResponse = await fetch(
+                `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(googleToken)}`
+            );
+            
+            if (!userInfoResponse.ok) {
+                throw new AppError('Invalid or expired Google token', 401);
             }
-
+            
+            const payload = await userInfoResponse.json();
+            const { email, name, picture, sub: googleId } = payload;
+            
             if (!email) {
                 throw new AppError('Could not retrieve email from Google account', 400);
             }
@@ -410,9 +370,7 @@ const authController = {
                         name: user.name,
                         email: user.email,
                         isVerified: user.is_verified === 1,
-                        profilePic: user.profile_pic || null,
-                        googleId: user.google_id || null,
-                        hasPassword: !!user.password
+                        profilePic: user.profile_pic || null
                     },
                     token
                 },
@@ -547,7 +505,6 @@ const authController = {
                         isVerified: user.is_verified === 1,
                         profilePic: user.profile_pic || null,
                         googleId: user.google_id || null,
-                        hasPassword: !!user.password,
                         createdAt: user.created_at,
                         updatedAt: user.updated_at
                     }
@@ -581,9 +538,7 @@ const authController = {
                         name: updatedUser.name,
                         email: updatedUser.email,
                         isVerified: updatedUser.is_verified === 1,
-                        profilePic: updatedUser.profile_pic || null,
-                        googleId: updatedUser.google_id || null,
-                        hasPassword: !!updatedUser.password
+                        profilePic: updatedUser.profile_pic || null
                     }
                 },
                 message: 'Profile updated successfully'
@@ -593,77 +548,55 @@ const authController = {
         }
     },
 
-// Backend - controllers/authController.js - Change password section
-
-// Change password (authenticated). Also doubles as "create password"
-// for accounts that don't have one yet (e.g. a Google-login account
-// that has never set a password) - in that case there is nothing to
-// verify, so currentPassword is not required.
-async changePassword(req, res, next) {
-    try {
-        const { currentPassword, newPassword } = req.body;
-        
-        if (!newPassword) {
-            throw new AppError('New password is required', 400);
-        }
-        
-        if (newPassword.length < 6) {
-            throw new AppError('New password must be at least 6 characters', 400);
-        }
-        
-        const user = await User.findByEmail(req.userEmail);
-        if (!user) {
-            throw new AppError('User not found', 404);
-        }
-        
-        if (user.password) {
-            // Account already has a password - this is a real change,
-            // so the current password must be verified first.
-            if (!currentPassword) {
-                throw new AppError('Current password is required', 400);
+    // Change password (authenticated)
+    async changePassword(req, res, next) {
+        try {
+            const { currentPassword, newPassword } = req.body;
+            
+            if (!currentPassword || !newPassword) {
+                throw new AppError('Current password and new password are required', 400);
             }
+            
+            if (newPassword.length < 6) {
+                throw new AppError('New password must be at least 6 characters', 400);
+            }
+            
+            const user = await User.findByEmail(req.userEmail);
+            if (!user) {
+                throw new AppError('User not found', 404);
+            }
+            
+            if (!user.password) {
+                throw new AppError('This account uses Google login. Cannot change password.', 400);
+            }
+            
             const isValid = await User.comparePassword(currentPassword, user.password);
             if (!isValid) {
                 throw new AppError('Current password is incorrect', 401);
             }
-        }
-        // else: no password set yet (Google-only account) - creating
-        // the first password needs no current-password verification.
-        
-        await User.updatePassword(req.userEmail, newPassword);
-        
-        // Delete all sessions except current
-        const token = req.headers.authorization?.split(' ')[1];
-        await UserSession.deleteAllByUserId(user.id);
-        if (token) {
-            await UserSession.create({
-                userId: user.id,
-                token,
-                expiresAt: getExpiresAt(7)
+            
+            await User.updatePassword(req.userEmail, newPassword);
+            
+            // Delete all sessions except current
+            const token = req.headers.authorization?.split(' ')[1];
+            await UserSession.deleteAllByUserId(user.id);
+            if (token) {
+                await UserSession.create({
+                    userId: user.id,
+                    token,
+                    expiresAt: getExpiresAt(7)
+                });
+            }
+            
+            res.json({
+                success: true,
+                message: 'Password changed successfully'
             });
+        } catch (error) {
+            next(error);
         }
-        
-        // Return updated user with hasPassword flag
-        const updatedUser = await User.findByEmail(req.userEmail);
-        res.json({
-            success: true,
-            data: {
-                user: {
-                    id: updatedUser.id,
-                    name: updatedUser.name,
-                    email: updatedUser.email,
-                    isVerified: updatedUser.is_verified === 1,
-                    profilePic: updatedUser.profile_pic || null,
-                    googleId: updatedUser.google_id || null,
-                    hasPassword: !!updatedUser.password
-                }
-            },
-            message: 'Password changed successfully'
-        });
-    } catch (error) {
-        next(error);
-    }
-},
+    },
+
     // Delete account
     async deleteAccount(req, res, next) {
         try {
@@ -679,12 +612,9 @@ async changePassword(req, res, next) {
                 if (!isValid) {
                     throw new AppError('Password is incorrect', 401);
                 }
-            } else {
-                // No password set yet (e.g. Google-login account that never
-                // created one) - there is nothing to verify the delete
-                // request against, so require the user to create a password
-                // first rather than allowing an unverified account deletion.
-                throw new AppError('Please create a password for your account before deleting it.', 400);
+            } else if (user.google_id) {
+                // For Google users, we might want additional verification
+                // For now, just proceed
             }
             
             await UserSession.deleteAllByUserId(user.id);

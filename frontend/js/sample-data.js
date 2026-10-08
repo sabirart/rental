@@ -11,8 +11,6 @@ const SAMPLE_DATA = {
             room_number: 1,
             status: 'active',
             description: 'Works in IT sector',
-            mobile_number: '03001234567',
-            advance_payment: 25000,
             profile_pic: 'demo_profile/profile1.png',
             documents: [
                 {
@@ -34,8 +32,6 @@ const SAMPLE_DATA = {
             room_number: 2,
             status: 'active',
             description: 'University student',
-            mobile_number: '03012345678',
-            advance_payment: 15000,
             profile_pic: 'demo_profile/profile2.png',
             documents: [
                 {
@@ -57,8 +53,6 @@ const SAMPLE_DATA = {
             room_number: 1,
             status: 'active',
             description: 'Business owner',
-            mobile_number: '03213456789',
-            advance_payment: 30000,
             profile_pic: 'demo_profile/profile3.png',
             documents: [
                 {

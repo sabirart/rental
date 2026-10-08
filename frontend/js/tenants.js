@@ -288,9 +288,6 @@ const Tenants = {
             currentMonth = monthsForDefaultYear.length > 0 ? monthsForDefaultYear[monthsForDefaultYear.length - 1] : currentMonth;
         }
         
-        // Get the payment for the current month/year to show receipt button
-        const currentPayment = allPayments.find(p => p.month === currentMonth && p.year === defaultYear);
-        
         let html = `
             <div style="margin-bottom: 16px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -298,16 +295,10 @@ const Tenants = {
                         <h4 style="margin: 0;">${escapeHTML(tenant.name)}</h4>
                         <p style="color: var(--text-light); font-size: 0.875rem; margin: 2px 0 0 0;">${property ? escapeHTML(property.name) : 'No Property'} - Room ${tenant.room_number || 'N/A'}</p>
                     </div>
-                    ${currentPayment ? `
-                        <button class="btn btn-sm btn-primary" onclick="Tenants.generateReceipt('${escapeHTML(tenant.id)}', ${defaultYear}, ${currentMonth})" style="display: inline-flex; align-items: center; gap: 6px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            Receipt
-                        </button>
-                    ` : ''}
                 </div>
             </div>
             
-            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-wrap: nowrap; background: var(--bg); padding: 6px 10px; border-radius: var(--radius); overflow-x: auto;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; background: var(--bg); padding: 8px 12px; border-radius: var(--radius);">
                 <button id="prevMonthBtn" class="nav-arrow-btn" style="background: none; border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; cursor: pointer; color: var(--text-light); font-size: 1rem; transition: var(--transition);" title="Previous Month (←)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
@@ -372,75 +363,6 @@ const Tenants = {
         }
     },
 
-    // Generate a PDF receipt for a specific tenant and month/year
-    generateReceipt(tenantId, year, month) {
-        const tenant = App.state.tenants.find(t => t.id === tenantId);
-        if (!tenant) {
-            showNotification('Tenant not found', 'error');
-            return;
-        }
-        
-        const payment = App.state.payments.find(p => p.tenant_id === tenantId && p.year === year && p.month === month);
-        if (!payment) {
-            showNotification('Payment not found for this period', 'error');
-            return;
-        }
-        
-        // Use the DataIO receipt generator
-        if (typeof DataIO !== 'undefined' && DataIO.generateReceipt) {
-            DataIO.generateReceipt(payment, tenant);
-        } else {
-            // Fallback - use the standalone receipt generation
-            this._generateStandaloneReceipt(payment, tenant);
-        }
-    },
-    
-    // Standalone receipt generation if DataIO is not available
-    _generateStandaloneReceipt(payment, tenant) {
-        const win = window.open('', '_blank', 'width=480,height=640');
-        if (!win) {
-            Components.showWarning('Please allow pop-ups to generate the receipt.');
-            return;
-        }
-        const owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
-        const rows = [
-            ['Rent', payment.monthly_rent],
-            ['Electricity', payment.electricity],
-            ['Gas', payment.gas],
-            ['Previous Dues', payment.previous_dues]
-        ];
-        (payment.custom_charges || []).forEach(c => rows.push([c.label || 'Other Charge', c.amount || 0]));
-
-        win.document.write(`
-            <html>
-            <head>
-                <title>Payment Receipt</title>
-                <style>
-                    body { font-family: -apple-system, Arial, sans-serif; padding: 32px; color: #1c1c1c; }
-                    h1 { font-size: 1.2rem; margin-bottom: 0; }
-                    .sub { color: #6b6b6b; font-size: 0.85rem; margin-top: 4px; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                    td { padding: 8px 0; border-bottom: 1px solid #eee; font-size: 0.9rem; }
-                    td:last-child { text-align: right; }
-                    .total-row td { font-weight: 700; border-top: 2px solid #1a1a1a; border-bottom: none; padding-top: 12px; }
-                    .status { display:inline-block; margin-top:16px; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
-                </style>
-            </head>
-            <body onload="window.print()">
-                <h1>${escapeHTML(owner.name || 'Rental Manager')}</h1>
-                <p class="sub">Payment Receipt · ${monthName(payment.month)} ${payment.year}</p>
-                <p class="sub">Tenant: ${escapeHTML(tenant ? tenant.name : 'N/A')}</p>
-                <table>
-                    ${rows.map(([label, amt]) => `<tr><td>${escapeHTML(String(label))}</td><td>${formatCurrency(amt || 0)}</td></tr>`).join('')}
-                    <tr class="total-row"><td>Total</td><td>${formatCurrency(payment.total_payment || 0)}</td></tr>
-                </table>
-                <span class="status">${escapeHTML(payment.status || 'unpaid')}</span>
-            </body>
-            </html>
-        `);
-        win.document.close();
-    },
-
     getMonthOptionsForYear(allPayments, year, selectedMonth) {
         const months = [...new Set(allPayments.filter(p => p.year === year).map(p => p.month))].sort((a, b) => a - b);
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -484,18 +406,6 @@ const Tenants = {
         const renderPaymentsForMonth = (year, month) => {
             const filtered = allPayments.filter(p => p.year === year && p.month === month);
             listContainer.innerHTML = Tenants.renderPaymentList(filtered);
-            
-            // Update receipt button visibility for the current month
-            const receiptBtn = document.querySelector('#modal .btn-primary');
-            if (receiptBtn && receiptBtn.textContent.includes('Receipt')) {
-                const currentPayment = allPayments.find(p => p.year === year && p.month === month);
-                if (currentPayment) {
-                    receiptBtn.style.display = 'inline-flex';
-                    receiptBtn.onclick = () => Tenants.generateReceipt(Tenants._currentTenantId, year, month);
-                } else {
-                    receiptBtn.style.display = 'none';
-                }
-            }
             
             const months = getMonthsForYear(year);
             const currentIndex = months.indexOf(month);
@@ -876,7 +786,7 @@ const Tenants = {
                         </span>
                     </div>
                     <div class="detail-item">
-                        <span class="detail-label">Advance</span>
+                        <span class="detail-label">Advance Payment</span>
                         <span class="detail-value">${formatCurrency(tenant.advance_payment || 0)}</span>
                     </div>
                     <div class="detail-item">
@@ -964,17 +874,17 @@ const Tenants = {
                 <h3 class="popup-title">Contact ${escapeHTML(tenant.name)}</h3>
                 <p class="popup-message">${escapeHTML(rawNumber)}</p>
                 <div class="contact-options-list">
-                    <button type="button" class="contact-option-item" data-action="call">
-                        <span class="contact-option-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
-                        <span>Call tenant</span>
+                    <button type="button" class="contact-option-item" data-action="copy">
+                        <span class="contact-option-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+                        <span>Copy number</span>
                     </button>
                     <button type="button" class="contact-option-item" data-action="whatsapp">
                         <span class="contact-option-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
                         <span>Open WhatsApp</span>
                     </button>
-                    <button type="button" class="contact-option-item" data-action="copy">
-                        <span class="contact-option-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
-                        <span>Copy number</span>
+                    <button type="button" class="contact-option-item" data-action="call">
+                        <span class="contact-option-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
+                        <span>Call tenant</span>
                     </button>
                 </div>
             </div>
@@ -1006,6 +916,7 @@ const Tenants = {
                     document.execCommand('copy');
                     tempInput.remove();
                 }
+                showNotification('Number copied to clipboard', 'success');
             } catch (err) {
                 showNotification('Failed to copy number', 'error');
             }
@@ -1078,7 +989,7 @@ const Tenants = {
                             <div class="settings-form-group">
                                 <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">CNIC <span class="required" style="color: #dc3545;">*</span></label>
                                 <input type="text" class="form-control" id="tenantCnic" placeholder="XXXXX-XXXXXXX-X" required>
-                                <small style="color: var(--text-light); font-size: 0.55rem; display: block; margin-top: 2px;">Format: 12345-1234567-8</small>
+                                <small style="color: var(--text-light); font-size: 0.65rem; display: block; margin-top: 2px;">Format: 12345-1234567-8</small>
                             </div>
                             <div class="settings-form-group">
                                 <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Origin <span class="required" style="color: #dc3545;">*</span></label>
@@ -1092,7 +1003,7 @@ const Tenants = {
                                 <input type="tel" class="form-control" id="tenantMobile" placeholder="e.g. 03001234567">
                             </div>
                             <div class="settings-form-group">
-                                <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Advance</label>
+                                <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Advance Payment</label>
                                 <input type="number" class="form-control" id="tenantAdvancePayment" min="0" step="0.01" placeholder="0">
                             </div>
                         </div>
@@ -1593,7 +1504,7 @@ const Tenants = {
                                 <input type="tel" class="form-control" id="tenantMobile" value="${escapeHTML(tenant.mobile_number || '')}" placeholder="e.g. 03001234567">
                             </div>
                             <div class="settings-form-group">
-                                <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Advance</label>
+                                <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Advance Payment</label>
                                 <input type="number" class="form-control" id="tenantAdvancePayment" value="${tenant.advance_payment || 0}" min="0" step="0.01">
                             </div>
                         </div>

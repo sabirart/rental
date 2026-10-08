@@ -21,7 +21,6 @@
     const loginError = document.getElementById('loginError');
     const registerError = document.getElementById('registerError');
     const verifyError = document.getElementById('verifyError');
-    const verifySuccess = document.getElementById('verifySuccess');
     const forgotError = document.getElementById('forgotError');
     const resetError = document.getElementById('resetError');
 
@@ -146,8 +145,6 @@
             await Auth.register(name, email, password);
             closeModal(registerModal);
             document.getElementById('verifyEmail').value = email;
-            hideError(verifyError);
-            hideError(verifySuccess);
             openModal(verifyModal);
         } catch (error) {
             showError(registerError, error.message || 'Registration failed');
@@ -184,7 +181,6 @@
         e.preventDefault();
         const email = document.getElementById('verifyEmail').value.trim();
         hideError(verifyError);
-        hideError(verifySuccess);
 
         if (!email) {
             showError(verifyError, 'Email not found');
@@ -193,7 +189,6 @@
 
         try {
             await Auth.resendVerification(email);
-            showError(verifySuccess, 'A new OTP has been sent to your email.');
         } catch (error) {
             showError(verifyError, error.message || 'Failed to resend OTP');
         }
@@ -252,27 +247,8 @@
         }
     }
 
-// ===== GOOGLE LOGIN =====
-// Runs one of two flows depending on platform:
-//  - Native Android app (Capacitor): NativeAuth.googleSignIn() from native-auth.js,
-//    which uses Credential Manager and returns an ID token.
-//  - Browser (web): Google Identity Services popup (unchanged), returns an access token.
-// Both paths end up calling Auth.googleLogin(), which sends whichever token type
-// it received to the same backend endpoint.
+// ===== GOOGLE LOGIN - FIXED VERSION =====
 async function handleGoogleLogin() {
-    if (window.NativeAuth && window.NativeAuth.isNative()) {
-        try {
-            await window.NativeAuth.googleSignIn();
-            closeModal(loginModal);
-            closeModal(registerModal);
-            SiteController.unlockDashboard();
-        } catch (error) {
-            console.error('Native Google login error:', error);
-            alert('Google login failed: ' + (error.message || error));
-        }
-        return;
-    }
-
     try {
         // Load Google SDK
         if (typeof google === 'undefined') {
@@ -300,7 +276,7 @@ async function handleGoogleLogin() {
                 }
                 
                 try {
-                    const result = await Auth.googleLogin({ accessToken: response.access_token });
+                    const result = await Auth.googleLogin(response.access_token);
                     closeModal(loginModal);
                     closeModal(registerModal);
                     SiteController.unlockDashboard();

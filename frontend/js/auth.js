@@ -109,13 +109,11 @@ const Auth = {
         return data.data;
     },
     
-    // accessToken = web popup flow (google.accounts.oauth2), idToken = native
-    // app flow (Capacitor SocialLogin via Credential Manager). Only one is sent.
-    async googleLogin({ accessToken, idToken } = {}) {
+    async googleLogin(googleToken) {
         const response = await fetch(`${API.baseURL}/auth/google-login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(idToken ? { idToken } : { token: accessToken })
+            body: JSON.stringify({ token: googleToken })
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || data.message || 'Google login failed');
@@ -174,31 +172,17 @@ const Auth = {
         return data.data;
     },
 
-    // Accepts either { currentPassword, newPassword } or just { newPassword }
-    // for accounts without an existing password (Google-only accounts).
-    async changePassword(options) {
-        const payload = {};
-        if (options.currentPassword !== undefined) {
-            payload.currentPassword = options.currentPassword;
-        }
-        payload.newPassword = options.newPassword;
-        
+    async changePassword(currentPassword, newPassword) {
         const response = await fetch(`${API.baseURL}/auth/change-password`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${this._token}`
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ currentPassword, newPassword })
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || data.message || 'Failed to change password');
-        // If password was created, update hasPassword flag on the cached user
-        if (data.data && data.data.user) {
-            this.setUser(data.data.user, this._token);
-        } else if (this._user) {
-            this.setUser({ ...this._user, hasPassword: true }, this._token);
-        }
         return data;
     },
 

@@ -51,7 +51,9 @@
         },
 
         vibrate(ms) {
-            // Vibration disabled - no-op
+            if (isTouch && navigator.vibrate) {
+                try { navigator.vibrate(ms || 8); } catch (e) {}
+            }
         },
 
         // Backdrop behind the drawer sidebar on mobile
@@ -124,6 +126,7 @@
                 item.innerHTML = `${this.icons[view] || this.icons.dashboard}<span>${label}</span>`;
 
                 item.addEventListener('click', () => {
+                    this.vibrate(8);
                     if (window.App && typeof App.navigateTo === 'function') {
                         App.navigateTo(view);
                     } else {
@@ -252,6 +255,10 @@
             document.addEventListener('touchend', clear, { passive: true });
             document.addEventListener('touchcancel', clear, { passive: true });
 
+            document.addEventListener('touchend', (e) => {
+                const el = e.target.closest('.btn, .mobile-tab-item, .status-btn');
+                if (el) this.vibrate(6);
+            }, { passive: true });
         },
 
         // Swipe-down-to-dismiss on bottom-sheet modals

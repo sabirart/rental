@@ -38,9 +38,6 @@ const Notifications = {
         document.getElementById('notifBellBtnMobile')?.addEventListener('click', openPanel);
         document.getElementById('notifPanelClose')?.addEventListener('click', () => this.hidePanel());
         document.getElementById('notifPanelOverlay')?.addEventListener('click', () => this.hidePanel());
-        
-        // "Mark all as read" - clears all notifications and hides the badge
-        document.getElementById('notifMarkAllRead')?.addEventListener('click', () => this.markAllRead());
     },
 
     showPanel() {
@@ -83,15 +80,6 @@ const Notifications = {
     hidePanel() {
         document.getElementById('notifPanel').style.display = 'none';
         document.getElementById('notifPanelOverlay').style.display = 'none';
-    },
-
-    // Mark all notifications as read - clears the list and hides the badge
-    markAllRead() {
-        this._items = [];
-        this._renderBadge();
-        this._renderPanel();
-        // Also hide the panel if it's open (optional - user might want to see empty state)
-        // We keep it open showing "You're all caught up"
     },
 
     // Recompute the notification list from current App state and re-render

@@ -566,8 +566,3 @@
 :is(#siteOverlay, #authModalsRoot) .manage-account-warning i {
     margin-right: 6px;
 }
-
-/* Social Footer - Landing page only,  side */
-:is(#siteOverlay) .social-footer { position: absolute; bottom: 30px; right: 40px; display: flex; gap: 16px; }
-:is(#siteOverlay) .social-footer a { color: #000; font-size: 1.1rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
-@media (max-width: 768px) { :is(#siteOverlay) .social-footer { right: auto; left: 50%; transform: translateX(-50%); } }
