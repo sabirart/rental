@@ -162,7 +162,6 @@ const Properties = {
                     <textarea class="form-control" id="propertyDescription" rows="3"></textarea>
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="propertySubmitBtn">Save</button>
                 </div>
             </form>
@@ -594,7 +593,6 @@ const Properties = {
                     <textarea class="form-control" id="propertyDescription" rows="3">${escapeHTML(property.description || '')}</textarea>
                 </div>
                 <div class="form-actions">
-                    <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="propertySubmitBtn">Update</button>
                 </div>
             </form>
@@ -971,7 +969,6 @@ const Properties = {
                         <input type="number" class="form-control" id="editRoomRent" value="${room.rent_amount || 0}" min="0">
                     </div>
                     <div class="form-actions">
-                        <button class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
                         <button class="btn btn-primary" onclick="Properties.updateRoom('${propertyId}', ${roomNumber})" id="roomSubmitBtn">Update</button>
                     </div>
                 `;

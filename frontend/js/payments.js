@@ -51,7 +51,7 @@ const Payments = {
             const statusMap = { paid: 'success', partial: 'warning', unpaid: 'danger' };
             const statusBadge = `<span class="badge badge-${statusMap[payment.status] || 'danger'}">${escapeHTML(payment.status)}</span>`;
             const remainingNote = payment.status === 'partial'
-                ? `<div style="font-size: 0.75rem; color: var(--text-light); margin-top: 2px;">Received ${formatCurrency(payment.amount_paid || 0)} &middot; Owes ${formatCurrency(Math.max(0, (payment.total_payment || 0) - (payment.amount_paid || 0)))}</div>`
+                ? `Received ${formatCurrency(payment.amount_paid || 0)} · Owes ${formatCurrency(Math.max(0, (payment.total_payment || 0) - (payment.amount_paid || 0)))}`
                 : '';
             
             const total = (payment.monthly_rent || 0) + (payment.electricity || 0) + (payment.gas || 0) + (payment.previous_dues || 0);
@@ -67,7 +67,7 @@ const Payments = {
                     <td>${formatCurrency(payment.gas || 0)}</td>
                     <td>${formatCurrency(payment.previous_dues || 0)}</td>
                     <td><strong>${formatCurrency(total)}</strong></td>
-                    <td>${statusBadge}${remainingNote}</td>
+                    <td>${remainingNote ? `<span class="payment-status-hover" data-tooltip="${escapeHTML(remainingNote)}">${statusBadge}</span>` : statusBadge}</td>
                     <td>
                         <div class="action-buttons">
                             <button class="action-btn edit" data-id="${escapeHTML(payment.id)}">Edit</button>
@@ -85,6 +85,13 @@ const Payments = {
     },
     
     setupEventListeners() {
+        if (!this._toggleListenerBound) {
+            this._toggleListenerBound = true;
+            document.addEventListener('click', (e) => {
+                const trigger = e.target.closest('[data-action="toggle-payment-notes"]');
+                if (trigger) { e.preventDefault(); e.stopPropagation(); this.toggleNotes(trigger); }
+            });
+        }
         document.getElementById('addPaymentBtn').addEventListener('click', () => this.showAddForm());
         document.getElementById('paymentMonthFilter').addEventListener('change', () => this.renderPayments());
         document.getElementById('paymentYearFilter').addEventListener('change', () => this.renderPayments());
@@ -219,18 +226,14 @@ const Payments = {
         `;
     },
     
-    toggleNotes() {
-        const container = document.getElementById('notesContainer');
-        const icon = document.getElementById('notesToggleIcon');
-        if (container) {
-            if (container.style.display === 'none') {
-                container.style.display = 'block';
-                if (icon) icon.textContent = '▼';
-            } else {
-                container.style.display = 'none';
-                if (icon) icon.textContent = '▶';
-            }
-        }
+    toggleNotes(trigger) {
+        const scope = trigger?.closest('.modal-content, .popup-box, form') || document;
+        const container = scope.querySelector('[data-payment-notes-container]') || scope.querySelector('#notesContainer');
+        const icon = trigger?.querySelector('[data-notes-icon]') || trigger?.querySelector('#notesToggleIcon');
+        if (!container) return;
+        const isHidden = getComputedStyle(container).display === 'none';
+        container.style.display = isHidden ? 'block' : 'none';
+        if (icon) icon.textContent = isHidden ? '▼' : '▶';
     },
 
     showAddForm() {
@@ -295,16 +298,13 @@ const Payments = {
                     <small style="color: var(--text-light); display: block; margin-top: 4px;">How much has this tenant actually paid toward the total above?</small>
                 </div>
                 <div class="form-group">
-                    <label style="cursor: pointer; display: block; margin-bottom: 4px;" onclick="Payments.toggleNotes()">
-                        <span id="notesToggleIcon">▶</span> Add Notes
-                    </label>
-                    <div id="notesContainer" style="display: none; margin-top: 4px;">
+                    <button type="button" class="payment-notes-toggle" id="paymentNotesToggle" data-action="toggle-payment-notes"><span data-notes-icon id="notesToggleIcon">▶</span> Add Notes</button>
+                    <div data-payment-notes-container id="notesContainer" style="display: none; margin-top: 4px;">
                         <textarea class="form-control" id="paymentNotes" rows="2" placeholder="Additional notes"></textarea>
                     </div>
                 </div>
                 ${this.getTotalHTML()}
                 <div class="form-actions">
-                    <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="paymentSubmitBtn">Save Payment</button>
                 </div>
             </form>
@@ -425,16 +425,13 @@ const Payments = {
                     <small style="color: var(--text-light); display: block; margin-top: 4px;">How much has this tenant actually paid toward the total above?</small>
                 </div>
                 <div class="form-group">
-                    <label style="cursor: pointer; display: block; margin-bottom: 4px;" onclick="Payments.toggleNotes()">
-                        <span id="notesToggleIcon">▶</span> Add Notes
-                    </label>
-                    <div id="notesContainer" style="display: none; margin-top: 4px;">
+                    <button type="button" class="payment-notes-toggle" id="paymentNotesToggle" data-action="toggle-payment-notes"><span data-notes-icon id="notesToggleIcon">▶</span> Add Notes</button>
+                    <div data-payment-notes-container id="notesContainer" style="display: none; margin-top: 4px;">
                         <textarea class="form-control" id="paymentNotes" rows="2">${escapeHTML(payment.notes || '')}</textarea>
                     </div>
                 </div>
                 ${this.getTotalHTML(withoutDue, totalWithDue, payment.amount_paid || 0, payment.status)}
                 <div class="form-actions">
-                    <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="paymentSubmitBtn">Update Payment</button>
                 </div>
             </form>

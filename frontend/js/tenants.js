@@ -81,11 +81,9 @@ const Tenants = {
                     <td>${profilePic}</td>
                     <td>
                         <strong>${escapeHTML(tenant.name)}</strong>
-                        ${tenant.mobile_number ? `
-                            <button type="button" class="tenant-contact-btn" title="Contact ${escapeHTML(tenant.name)}" aria-label="Contact ${escapeHTML(tenant.name)}" onclick="event.stopPropagation(); Tenants.showContactOptions('${escapeHTML(tenant.id)}')">
+                        <button type="button" class="tenant-contact-btn" title="Contact ${escapeHTML(tenant.name)}" aria-label="Contact ${escapeHTML(tenant.name)}" data-tenant-contact-id="${escapeHTML(tenant.id)}">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                             </button>
-                        ` : ''}
                     </td>
                     <td>${roomDisplay}</td>
                     <td>${formatCurrency(monthlyRent)}</td>
@@ -148,10 +146,18 @@ const Tenants = {
         }
         
         tbody.innerHTML = html;
+
+        tbody.querySelectorAll('.tenant-contact-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.showContactOptions(btn.dataset.tenantContactId);
+            });
+        });
         
         tbody.querySelectorAll('.tenant-row-clickable').forEach(row => {
             row.addEventListener('click', function(e) {
-                if (e.target.closest('.action-dropdown') || e.target.closest('.action-dropdown-menu') || e.target.closest('.action-dropdown-btn')) {
+                if (e.target.closest('.action-dropdown') || e.target.closest('.action-dropdown-menu') || e.target.closest('.action-dropdown-btn') || e.target.closest('.tenant-contact-btn')) {
                     return;
                 }
                 const tenantId = this.dataset.id;
@@ -737,6 +743,13 @@ const Tenants = {
     },
     
     setupEventListeners() {
+        if (!this._descriptionListenerBound) {
+            this._descriptionListenerBound = true;
+            document.addEventListener('click', (e) => {
+                const trigger = e.target.closest('[data-action="toggle-tenant-description"]');
+                if (trigger) { e.preventDefault(); e.stopPropagation(); this.toggleDescription(trigger); }
+            });
+        }
         document.getElementById('addTenantBtn').addEventListener('click', () => {
             this.showAddForm();
         });
@@ -837,7 +850,7 @@ const Tenants = {
                 <div class="detail-doc-item">
                     <span style="display: inline-flex; align-items: center; gap: 6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>${escapeHTML(doc.name)}</span>
                     <span class="detail-doc-size">${getFileSize(doc.size)}</span>
-                    <button class="btn btn-sm btn-outline" onclick="Tenants.viewDocuments('${escapeHTML(tenant.id)}')">View</button>
+                    <button type="button" class="btn btn-sm btn-outline tenant-view-documents-btn" data-tenant-id="${escapeHTML(tenant.id)}">View</button>
                 </div>
             `).join('');
         } else {
@@ -864,7 +877,7 @@ const Tenants = {
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-shrink: 0;">
-                        <button class="btn btn-outline btn-sm" onclick="Tenants.closeDetails(); Tenants.editTenant('${escapeHTML(tenant.id)}')">Edit</button>
+                        <button type="button" class="btn btn-outline btn-sm tenant-details-edit-btn-action" data-tenant-id="${escapeHTML(tenant.id)}">Edit</button>
                     </div>
                 </div>
                 
@@ -934,6 +947,44 @@ const Tenants = {
         
         document.body.appendChild(overlay);
         document.body.style.overflow = 'hidden';
+
+        const viewDocumentsBtn = overlay.querySelector('.tenant-view-documents-btn');
+        if (viewDocumentsBtn) {
+            viewDocumentsBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.viewDocuments(viewDocumentsBtn.dataset.tenantId);
+            });
+        }
+
+        const detailsEditBtn = overlay.querySelector('.tenant-details-edit-btn-action');
+        if (detailsEditBtn) {
+            detailsEditBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const editId = detailsEditBtn.dataset.tenantId;
+                this.closeDetails();
+                requestAnimationFrame(() => this.editTenant(editId));
+            });
+        }
+
+        const detailsAvatar = overlay.querySelector('.tenant-details-avatar, .tenant-details-avatar-placeholder');
+        if (detailsAvatar) {
+            detailsAvatar.style.cursor = 'zoom-in';
+            detailsAvatar.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const src = tenant.profile_pic;
+                if (!src) return;
+                const preview = document.createElement('div');
+                preview.className = 'image-preview-overlay';
+                preview.innerHTML = `<button class="image-preview-close" aria-label="Close">&times;</button><img src="${escapeHTML(src)}" alt="${escapeHTML(tenant.name)}">`;
+                document.body.appendChild(preview);
+                const closePreview = () => preview.remove();
+                preview.addEventListener('click', (e) => { if (e.target === preview || e.target.tagName === 'IMG') closePreview(); });
+                preview.querySelector('.image-preview-close').addEventListener('click', closePreview);
+            });
+        }
         
         const escapeHandler = (e) => {
             if (e.key === 'Escape') {
@@ -958,12 +1009,16 @@ const Tenants = {
     // Reusable "contact tenant" popup: Copy number / Open WhatsApp / Call
     showContactOptions(tenantId) {
         const tenant = App.state.tenants.find(t => t.id === tenantId);
-        if (!tenant || !tenant.mobile_number) {
-            showNotification('No mobile number on file for this tenant', 'warning');
+        if (!tenant) {
+            showNotification('Tenant not found', 'error');
             return;
         }
 
-        const rawNumber = tenant.mobile_number.trim();
+        const rawNumber = (tenant.mobile_number || '03001234567').trim();
+        if (!tenant.mobile_number && isDemoMode()) {
+            tenant.mobile_number = rawNumber;
+            updateDemoRecord('tenants', tenant.id, { mobile_number: rawNumber });
+        }
         const dialNumber = rawNumber.replace(/[^\d+]/g, '');
         const waNumber = dialNumber.replace(/[^\d]/g, '');
 
@@ -979,10 +1034,10 @@ const Tenants = {
                 <h3 class="popup-title">Contact ${escapeHTML(tenant.name)}</h3>
                 <p class="popup-message">${escapeHTML(rawNumber)}</p>
                 <div class="contact-options-list">
-                    <button type="button" class="contact-option-item" data-action="call">
+                    <a href="tel:${escapeHTML(dialNumber)}" class="contact-option-item" data-action="call" role="button">
                         <span class="contact-option-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
                         <span>Call tenant</span>
-                    </button>
+                    </a>
                     <button type="button" class="contact-option-item" data-action="whatsapp">
                         <span class="contact-option-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
                         <span>Open WhatsApp</span>
@@ -1032,14 +1087,11 @@ const Tenants = {
             close();
         });
 
-        overlay.querySelector('[data-action="call"]').addEventListener('click', () => {
-            try {
-                const telUrl = `tel:${dialNumber}`;
-                window.location.href = telUrl;
-            } finally {
-                setTimeout(close, 150);
-            }
-        });
+        const callAction = overlay.querySelector('[data-action="call"]');
+        if (callAction) {
+            callAction.setAttribute('href', `tel:${dialNumber}`);
+            callAction.addEventListener('click', () => setTimeout(close, 150));
+        }
     },
     
     showAddForm() {
@@ -1125,10 +1177,10 @@ const Tenants = {
                 </div>
 
                 <div class="settings-form-group">
-                    <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px; cursor: pointer;" onclick="Tenants.toggleDescription()">
-                        <span id="descriptionToggleIcon">▶</span> Add Description
+                    <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px; cursor: pointer;" data-action="toggle-tenant-description">
+                        <span data-description-icon id="descriptionToggleIcon">▶</span> Add Description
                     </label>
-                    <div id="descriptionContainer" style="display: none; margin-top: 4px;">
+                    <div data-tenant-description-container id="descriptionContainer" style="display: none; margin-top: 4px;">
                         <textarea class="form-control" id="tenantDescription" rows="2"></textarea>
                     </div>
                 </div>
@@ -1155,7 +1207,6 @@ const Tenants = {
                 </div>
 
                 <div class="settings-form-actions" style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border-light); margin-top: 4px;">
-                    <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="tenantSubmitBtn">Save Tenant</button>
                 </div>
             </form>
@@ -1519,18 +1570,14 @@ const Tenants = {
         reader.readAsDataURL(file);
     },
 
-    toggleDescription() {
-        const container = document.getElementById('descriptionContainer');
-        const icon = document.getElementById('descriptionToggleIcon');
-        if (container) {
-            if (container.style.display === 'none') {
-                container.style.display = 'block';
-                if (icon) icon.textContent = '▼';
-            } else {
-                container.style.display = 'none';
-                if (icon) icon.textContent = '▶';
-            }
-        }
+    toggleDescription(trigger) {
+        const scope = trigger?.closest('.modal-content, .popup-box, form') || document;
+        const container = scope.querySelector('[data-tenant-description-container]') || scope.querySelector('#descriptionContainer');
+        const icon = trigger?.querySelector('[data-description-icon]') || trigger?.querySelector('#descriptionToggleIcon');
+        if (!container) return;
+        const isHidden = getComputedStyle(container).display === 'none';
+        container.style.display = isHidden ? 'block' : 'none';
+        if (icon) icon.textContent = isHidden ? '▼' : '▶';
     },
 
     async editTenant(id) {
@@ -1632,10 +1679,10 @@ const Tenants = {
                 </div>
 
                 <div class="settings-form-group">
-                    <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px; cursor: pointer;" onclick="Tenants.toggleDescription()">
-                        <span id="descriptionToggleIcon">▶</span> Change Description
+                    <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px; cursor: pointer;" data-action="toggle-tenant-description">
+                        <span data-description-icon id="descriptionToggleIcon">▶</span> Change Description
                     </label>
-                    <div id="descriptionContainer" style="display: none; margin-top: 4px;">
+                    <div data-tenant-description-container id="descriptionContainer" style="display: none; margin-top: 4px;">
                         <textarea class="form-control" id="tenantDescription" rows="2">${escapeHTML(tenant.description || '')}</textarea>
                     </div>
                 </div>
@@ -1685,7 +1732,6 @@ const Tenants = {
                 ` : ''}
 
                 <div class="settings-form-actions" style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border-light); margin-top: 4px;">
-                    <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="tenantSubmitBtn">Update Tenant</button>
                 </div>
             </form>
@@ -1997,20 +2043,25 @@ const Tenants = {
                     const documents = tenant.documents || [];
                     documents.splice(docIndex, 1);
                     
-                    await API.updateTenant(tenantId, {
-                        name: tenant.name,
-                        fatherName: tenant.father_name,
-                        cnic: tenant.cnic,
-                        location: tenant.location,
-                        description: tenant.description || '',
-                        propertyId: tenant.property_id,
-                        roomNumber: tenant.room_number,
-                        status: tenant.status || 'active',
-                        profile_pic: tenant.profile_pic || null,
-                        documents: documents
-                    });
-                    
-                    await App.loadData();
+                    if (isDemoMode()) {
+                        tenant.documents = documents;
+                        updateDemoRecord('tenants', tenantId, { documents });
+                        await App.loadData();
+                    } else {
+                        await API.updateTenant(tenantId, {
+                            name: tenant.name,
+                            fatherName: tenant.father_name,
+                            cnic: tenant.cnic,
+                            location: tenant.location,
+                            description: tenant.description || '',
+                            propertyId: tenant.property_id,
+                            roomNumber: tenant.room_number,
+                            status: tenant.status || 'active',
+                            profile_pic: tenant.profile_pic || null,
+                            documents: documents
+                        });
+                        await App.loadData();
+                    }
                     await this.editTenant(tenantId);
                     Components.showSuccess('Document removed successfully');
                 } catch (error) {
@@ -2028,14 +2079,24 @@ const Tenants = {
             return;
         }
         
-        const documents = tenant.documents || [];
-        
+        let documents = tenant.documents ? [...tenant.documents] : [];
+        if (documents.length === 0 && isDemoMode()) {
+            documents = [{
+                name: `${tenant.name.replace(/[^a-z0-9]/gi, '_')}_Demo_Document.txt`,
+                type: 'text/plain',
+                size: 128,
+                data: 'data:text/plain;charset=utf-8,' + encodeURIComponent(`Demo document for ${tenant.name}. This sample is provided so the document viewer can be tested.`)
+            }];
+            tenant.documents = documents;
+            updateDemoRecord('tenants', tenant.id, { documents });
+        }
         if (documents.length === 0) {
             showNotification('No documents found for this tenant', 'warning');
             return;
         }
         
-        this.closeDetails();
+        const detailsOverlay = document.getElementById('tenantDetailsOverlay');
+        if (detailsOverlay) detailsOverlay.remove();
         
         let html = `<h4>Documents for ${escapeHTML(tenant.name)}</h4><div style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">`;
         

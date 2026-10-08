@@ -24,6 +24,7 @@ const App = {
         DashboardAuthBar.init();
         this.setupNavigation();
         this.setupModal();
+        this.setupFloatingInfoTooltips();
         this.setupNetworkListeners();
         this.setupAuthListener();
         this.setupVisibilityRefresh();
@@ -309,9 +310,17 @@ const App = {
 
     closeDocumentModal() {
         const modal = document.getElementById('documentModal');
-        if (modal) modal.classList.remove('active');
+        if (modal) {
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+            modal.style.removeProperty('display');
+            modal.style.removeProperty('pointer-events');
+        }
         const body = document.getElementById('documentModalBody');
         if (body) body.innerHTML = '';
+        // Always restore the page interaction state after closing the viewer.
+        document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
         this._syncOverlayScrollLock();
     },
 
@@ -328,6 +337,54 @@ const App = {
         document.body.style.overflow = open ? 'hidden' : '';
     },
     
+    setupFloatingInfoTooltips() {
+        if (this._floatingTooltipsReady) return;
+        this._floatingTooltipsReady = true;
+        let tooltip = null;
+        let owner = null;
+
+        const remove = () => {
+            if (tooltip) tooltip.remove();
+            tooltip = null;
+            owner = null;
+        };
+
+        const show = (el) => {
+            const value = el.getAttribute('data-tooltip') || el.getAttribute('data-full-value');
+            if (!value) return;
+            remove();
+            owner = el;
+            tooltip = document.createElement('div');
+            tooltip.className = 'floating-info-tooltip';
+            tooltip.textContent = value;
+            document.body.appendChild(tooltip);
+
+            const rect = el.getBoundingClientRect();
+            const gap = 8;
+            const tw = tooltip.offsetWidth;
+            const th = tooltip.offsetHeight;
+            let left = rect.left + (rect.width - tw) / 2;
+            left = Math.max(12, Math.min(left, window.innerWidth - tw - 12));
+            let top = rect.top - th - gap;
+            if (top < 12) top = rect.bottom + gap;
+            if (top + th > window.innerHeight - 12) top = Math.max(12, window.innerHeight - th - 12);
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
+            requestAnimationFrame(() => tooltip?.classList.add('is-visible'));
+        };
+
+        document.addEventListener('mouseenter', e => {
+            const el = e.target.closest?.('.payment-status-hover, .info-hover');
+            if (el) show(el);
+        }, true);
+        document.addEventListener('mouseleave', e => {
+            const el = e.target.closest?.('.payment-status-hover, .info-hover');
+            if (el && el === owner) remove();
+        }, true);
+        window.addEventListener('scroll', remove, true);
+        window.addEventListener('resize', remove);
+    },
+
     async refreshData() {
         if (this._refreshTimeout) { clearTimeout(this._refreshTimeout); this._refreshTimeout = null; }
         this._refreshTimeout = setTimeout(async () => {

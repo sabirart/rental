@@ -50,13 +50,20 @@ const Notifications = {
         document.getElementById('notifPanelClose')?.addEventListener('click', () => this.hidePanel());
         document.getElementById('notifPanelOverlay')?.addEventListener('click', () => this.hidePanel());
         
-        // Marking notifications read persists across reloads and section changes.
-        document.getElementById('notifMarkAllRead')?.addEventListener('click', () => this.markAllRead());
     },
 
     showPanel() {
         if (window.closeAllOverlays) window.closeAllOverlays('notifPanel');
         this.refresh();
+        // Opening the notification panel automatically marks all currently
+        // unread notifications as read. Keep the items visible in the panel.
+        if (this._items.length) {
+            const read = this._getReadIds();
+            this._items.forEach(item => read.add(item.id));
+            this._saveReadIds(read);
+            this._items = [];
+            this._renderBadge();
+        }
         document.getElementById('notifPanel').style.display = 'flex';
         document.getElementById('notifPanelOverlay').style.display = 'block';
         this._positionPanel();
@@ -179,12 +186,13 @@ const Notifications = {
             body.innerHTML = `<div class="notif-empty">Notifications are turned off.<br>Enable them in Settings.</div>`;
             return;
         }
-        if (this._items.length === 0) {
+        const panelItems = this._items.length ? this._items : this._allItems;
+        if (panelItems.length === 0) {
             body.innerHTML = `<div class="notif-empty">You're all caught up.<br>No alerts right now.</div>`;
             return;
         }
 
-        body.innerHTML = this._items.map(item => `
+        body.innerHTML = panelItems.map(item => `
             <div class="notif-item ${item.urgent ? 'notif-urgent' : ''}">
                 <div class="notif-item-icon">${item.icon}</div>
                 <div class="notif-item-body">
