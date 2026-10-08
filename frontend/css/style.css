@@ -807,3 +807,19 @@ select:focus-visible,.filter-select:focus-visible,.settings-select:focus-visible
   .modal-close,.recycle-close,.tenant-details-close,.popup-close-x,.image-preview-close{width:28px;height:28px;}
   .payment-overview{margin-bottom:14px;}
 }
+
+/* Mobile properties: center fixed-width cards within the available screen. */
+@media (max-width:768px){
+  .properties-grid{
+    width:100%;
+    grid-template-columns:minmax(280px,360px);
+    justify-content:center;
+    justify-items:center;
+    box-sizing:border-box;
+  }
+  .property-card{
+    width:360px;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+}
