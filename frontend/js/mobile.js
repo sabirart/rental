@@ -286,14 +286,18 @@
                 const sheet = resolveSheet(e.target);
                 if (!sheet || !sheet.panel) return;
 
-                const rect = sheet.panel.getBoundingClientRect();
                 const touchY = e.touches[0].clientY;
-                const startedNearTop = touchY <= rect.top + 84;
+                const touchX = e.touches[0].clientX;
                 const handle = e.target.closest('.modal-drag-handle');
-                if (!startedNearTop && !handle) return;
 
+                // Let a downward swipe begin anywhere on the sheet. This is
+                // important on phones where the close gesture is expected
+                // from the content area, not only from the header/handle.
+                // A small horizontal threshold prevents normal horizontal
+                // scrolling/taps from being interpreted as a dismiss gesture.
                 active = sheet;
                 startY = touchY;
+                active.startX = touchX;
                 dy = 0;
                 dragging = true;
                 sheet.panel.style.transition = 'none';
@@ -302,8 +306,21 @@
             document.addEventListener('touchmove', (e) => {
                 if (!dragging || !active || e.touches.length !== 1) return;
                 const nextY = e.touches[0].clientY;
-                const deltaX = Math.abs(e.touches[0].clientX - (e.touches[0].clientX));
-                dy = Math.max(0, nextY - startY);
+                const nextX = e.touches[0].clientX;
+                const deltaX = Math.abs(nextX - active.startX);
+                const deltaY = nextY - startY;
+
+                // Horizontal movement belongs to the content; only a clear
+                // downward gesture should move the overlay.
+                if (deltaX > 24 && deltaX > Math.abs(deltaY)) {
+                    dragging = false;
+                    active.panel.style.transition = '';
+                    active.panel.style.transform = '';
+                    active = null;
+                    return;
+                }
+
+                dy = Math.max(0, deltaY);
                 if (dy > 0) {
                     active.panel.style.transform = `translateY(${dy}px)`;
                 }

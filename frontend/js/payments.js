@@ -213,14 +213,24 @@ const Payments = {
         const resolvedPaid = this.resolveAmountPaid(status, totalWithDue, amountPaid);
         const remaining = Math.max(0, totalWithDue - resolvedPaid);
         return `
-            <div style="background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-                    <div><strong>Without Due:</strong> <span id="paymentWithoutDueDisplay" style="font-weight: 600; margin-left: 4px;">${formatCurrency(withoutDue)}</span></div>
-                    <div><strong>Total +Due:</strong> <span id="paymentTotalDisplay" style="font-weight: 600; margin-left: 4px;">${formatCurrency(totalWithDue)}</span></div>
-                </div>
-                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border-light); padding-top: 8px;">
-                    <div><strong>Amount Received:</strong> <span id="paymentPaidDisplay" style="font-weight: 600; margin-left: 4px; color: #155724;">${formatCurrency(resolvedPaid)}</span></div>
-                    <div><strong>Remaining Balance:</strong> <span id="paymentRemainingDisplay" style="font-weight: 600; margin-left: 4px; color: #721c24;">${formatCurrency(remaining)}</span></div>
+            <div class="payment-overview" aria-label="Payment overview">
+                <div class="payment-overview-grid">
+                    <div class="payment-overview-item">
+                        <span class="payment-overview-label">Without Due</span>
+                        <span id="paymentWithoutDueDisplay" class="payment-overview-value">${formatCurrency(withoutDue)}</span>
+                    </div>
+                    <div class="payment-overview-item">
+                        <span class="payment-overview-label">Total + Due</span>
+                        <span id="paymentTotalDisplay" class="payment-overview-value">${formatCurrency(totalWithDue)}</span>
+                    </div>
+                    <div class="payment-overview-item payment-overview-item-emphasis">
+                        <span class="payment-overview-label">Amount Received</span>
+                        <span id="paymentPaidDisplay" class="payment-overview-value payment-overview-positive">${formatCurrency(resolvedPaid)}</span>
+                    </div>
+                    <div class="payment-overview-item payment-overview-item-emphasis">
+                        <span class="payment-overview-label">Remaining Balance</span>
+                        <span id="paymentRemainingDisplay" class="payment-overview-value payment-overview-negative">${formatCurrency(remaining)}</span>
+                    </div>
                 </div>
             </div>
         `;

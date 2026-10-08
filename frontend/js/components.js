@@ -159,17 +159,67 @@ const Components = {
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
         const colors = { success: '#28a745', error: '#dc3545', warning: '#ffc107', info: '#17a2b8' };
+        const raw = String(message ?? '').trim();
+        const lower = raw.toLowerCase();
         const shortToast = {
-            'Tenant updated successfully': 'Tenant updated',
-            'Tenant added successfully': 'Tenant added',
-            'Payment updated successfully': 'Payment updated',
-            'Payment added successfully': 'Payment added',
-            'Document removed successfully': 'Document removed',
-            'Month export downloaded': 'Export downloaded',
-            'Data exported successfully': 'Data exported',
-            'Imported successfully': 'Import complete'
+            'tenant updated successfully': 'Tenant updated',
+            'tenant added successfully': 'Tenant added',
+            'payment updated successfully': 'Payment updated',
+            'payment added successfully': 'Payment added',
+            'document removed successfully': 'Document removed',
+            'month export downloaded': 'Export downloaded',
+            'data exported successfully': 'Export complete',
+            'imported successfully': 'Import complete',
+            'property added': 'Property added',
+            'property updated successfully': 'Property updated',
+            'property deleted successfully': 'Property deleted',
+            'room updated successfully': 'Room updated',
+            'room removed successfully': 'Room removed',
+            'room added': 'Room added',
+            'data refreshed': 'Data refreshed',
+            'properties refreshed': 'Properties refreshed',
+            'all data cleared successfully': 'Data cleared',
+            'demo data reset successfully': 'Demo reset',
+            'notification marked as read': 'Marked read',
+            'failed to copy': 'Copy failed',
+            'copied successfully': 'Copied',
+            'receipt updated': 'Receipt updated',
+            'receipt uploaded': 'Receipt uploaded'
         };
-        const cleanMessage = shortToast[message] || String(message).trim().split(/\s+/).slice(0, 2).join(' ');
+        let cleanMessage = shortToast[lower] || '';
+        if (!cleanMessage) {
+            const rules = [
+                ['failed to update payment', 'Update failed'],
+                ['failed to add payment', 'Add failed'],
+                ['failed to save payment', 'Save failed'],
+                ['failed to delete payment', 'Delete failed'],
+                ['failed to update tenant', 'Update failed'],
+                ['failed to add tenant', 'Add failed'],
+                ['failed to delete tenant', 'Delete failed'],
+                ['failed to update property', 'Update failed'],
+                ['failed to add property', 'Add failed'],
+                ['failed to delete property', 'Delete failed'],
+                ['failed to update room', 'Update failed'],
+                ['failed to add room', 'Add failed'],
+                ['failed to delete room', 'Delete failed'],
+                ['failed to load', 'Load failed'],
+                ['failed to read', 'Read failed'],
+                ['failed to clear', 'Clear failed'],
+                ['failed to recover', 'Recover failed'],
+                ['please select', 'Select required'],
+                ['please enter', 'Input required'],
+                ['please fill', 'Fields required'],
+                ['amount received must', 'Amount invalid'],
+                ['enter the amount received', 'Amount required'],
+                ['not found', 'Not found'],
+                ['offline', 'Offline mode'],
+                ['logged out', 'Logged out']
+            ];
+            const hit = rules.find(([needle]) => lower.includes(needle));
+            cleanMessage = hit ? hit[1] : raw.split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
+        }
+        // Toasts are intentionally capped at two words everywhere.
+        cleanMessage = cleanMessage.split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
         toast.style.cssText = `
             position: fixed; top: calc(var(--safe-top, 0px) + 16px); left: 50%;
             transform: translateX(-50%); padding: 10px 16px; border-radius: 8px;
