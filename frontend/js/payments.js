@@ -50,9 +50,6 @@ const Payments = {
             
             const statusMap = { paid: 'success', partial: 'warning', unpaid: 'danger' };
             const statusBadge = `<span class="badge badge-${statusMap[payment.status] || 'danger'}">${escapeHTML(payment.status)}</span>`;
-            const remainingNote = payment.status === 'partial'
-                ? `<div style="font-size: 0.75rem; color: var(--text-light); margin-top: 2px;">Received ${formatCurrency(payment.amount_paid || 0)} &middot; Owes ${formatCurrency(Math.max(0, (payment.total_payment || 0) - (payment.amount_paid || 0)))}</div>`
-                : '';
             
             const total = (payment.monthly_rent || 0) + (payment.electricity || 0) + (payment.gas || 0) + (payment.previous_dues || 0);
             
@@ -67,7 +64,7 @@ const Payments = {
                     <td>${formatCurrency(payment.gas || 0)}</td>
                     <td>${formatCurrency(payment.previous_dues || 0)}</td>
                     <td><strong>${formatCurrency(total)}</strong></td>
-                    <td>${statusBadge}${remainingNote}</td>
+                    <td>${statusBadge}</td>
                     <td>
                         <div class="action-buttons">
                             <button class="action-btn edit" data-id="${escapeHTML(payment.id)}">Edit</button>
@@ -100,25 +97,12 @@ const Payments = {
             gas: parseFloat(document.getElementById('paymentGas')?.value) || 0,
             dues: parseFloat(document.getElementById('paymentDues')?.value) || 0,
             status: document.getElementById('paymentStatus')?.value || 'unpaid',
-            amountPaid: parseFloat(document.getElementById('paymentAmountPaid')?.value) || 0,
             notes: document.getElementById('paymentNotes')?.value.trim() || ''
         };
     },
-
-    // Works out the amount actually received given the current status: a
-    // 'paid' record always means the full total was received, 'unpaid'
-    // always means nothing was received, and only 'partial' uses whatever
-    // the user typed into the Amount Received field. Mirrors
-    // Payment._resolveAmountPaid on the backend so the UI and the server
-    // never disagree about what a given status implies.
-    resolveAmountPaid(status, total, amountPaidRaw) {
-        if (status === 'paid') return total;
-        if (status === 'unpaid') return 0;
-        return amountPaidRaw || 0;
-    },
     
     updateTotal() {
-        const { rent, electricity, gas, dues, status, amountPaid } = this.getFormFields();
+        const { rent, electricity, gas, dues } = this.getFormFields();
         const withoutDue = rent + electricity + gas;
         const totalWithDue = withoutDue + dues;
         
@@ -127,33 +111,6 @@ const Payments = {
         
         if (withoutDueDisplay) withoutDueDisplay.textContent = formatCurrency(withoutDue);
         if (totalDisplay) totalDisplay.textContent = formatCurrency(totalWithDue);
-        
-        this.syncAmountPaidUI(totalWithDue, status, amountPaid);
-    },
-
-    // Shows/hides the "Amount Received" input (only meaningful for a
-    // partial payment) and keeps the always-visible "Amount Received" /
-    // "Remaining Balance" summary in sync with the current status + amount.
-    syncAmountPaidUI(total, status, amountPaidRaw) {
-        const amountPaidGroup = document.getElementById('amountPaidGroup');
-        const amountPaidInput = document.getElementById('paymentAmountPaid');
-        const paidDisplay = document.getElementById('paymentPaidDisplay');
-        const remainingDisplay = document.getElementById('paymentRemainingDisplay');
-
-        if (amountPaidGroup) amountPaidGroup.style.display = status === 'partial' ? 'block' : 'none';
-
-        const resolvedPaid = this.resolveAmountPaid(status, total, amountPaidRaw);
-        const remaining = Math.max(0, total - resolvedPaid);
-
-        if (paidDisplay) paidDisplay.textContent = formatCurrency(resolvedPaid);
-        if (remainingDisplay) remainingDisplay.textContent = formatCurrency(remaining);
-
-        if (amountPaidInput && status === 'partial') {
-            // Keep the field's declared max in sync with the current total
-            // so the browser's own number-input validation matches the
-            // server rule (amount received must be less than the total due).
-            amountPaidInput.max = total > 0 ? Math.max(total - 0.01, 0).toFixed(2) : 0;
-        }
     },
     
     getStatusHTML(selected = 'unpaid') {
@@ -202,19 +159,11 @@ const Payments = {
         }
     },
     
-    getTotalHTML(withoutDue = 0, totalWithDue = 0, amountPaid = 0, status = 'unpaid') {
-        const resolvedPaid = this.resolveAmountPaid(status, totalWithDue, amountPaid);
-        const remaining = Math.max(0, totalWithDue - resolvedPaid);
+    getTotalHTML(withoutDue = 0, totalWithDue = 0) {
         return `
-            <div style="background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-                    <div><strong>Without Due:</strong> <span id="paymentWithoutDueDisplay" style="font-weight: 600; margin-left: 4px;">${formatCurrency(withoutDue)}</span></div>
-                    <div><strong>Total +Due:</strong> <span id="paymentTotalDisplay" style="font-weight: 600; margin-left: 4px;">${formatCurrency(totalWithDue)}</span></div>
-                </div>
-                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border-light); padding-top: 8px;">
-                    <div><strong>Amount Received:</strong> <span id="paymentPaidDisplay" style="font-weight: 600; margin-left: 4px; color: #155724;">${formatCurrency(resolvedPaid)}</span></div>
-                    <div><strong>Remaining Balance:</strong> <span id="paymentRemainingDisplay" style="font-weight: 600; margin-left: 4px; color: #721c24;">${formatCurrency(remaining)}</span></div>
-                </div>
+            <div style="background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div><strong>Without Due:</strong> <span id="paymentWithoutDueDisplay" style="font-weight: 600; margin-left: 4px;">${formatCurrency(withoutDue)}</span></div>
+                <div><strong>Total +Due:</strong> <span id="paymentTotalDisplay" style="font-weight: 600; margin-left: 4px;">${formatCurrency(totalWithDue)}</span></div>
             </div>
         `;
     },
@@ -288,11 +237,6 @@ const Payments = {
                     <label>Status</label>
                     <div class="status-group">${this.getStatusHTML('unpaid')}</div>
                     <input type="hidden" id="paymentStatus" value="unpaid">
-                </div>
-                <div class="form-group" id="amountPaidGroup" style="display: none;">
-                    <label>Amount Received <span class="required">*</span></label>
-                    <input type="number" class="form-control" id="paymentAmountPaid" min="0.01" step="0.01" value="0">
-                    <small style="color: var(--text-light); display: block; margin-top: 4px;">How much has this tenant actually paid toward the total above?</small>
                 </div>
                 <div class="form-group">
                     <label style="cursor: pointer; display: block; margin-bottom: 4px;" onclick="Payments.toggleNotes()">
@@ -419,11 +363,6 @@ const Payments = {
                     <div class="status-group">${this.getStatusHTML(payment.status)}</div>
                     <input type="hidden" id="paymentStatus" value="${payment.status}">
                 </div>
-                <div class="form-group" id="amountPaidGroup" style="display: ${payment.status === 'partial' ? 'block' : 'none'};">
-                    <label>Amount Received <span class="required">*</span></label>
-                    <input type="number" class="form-control" id="paymentAmountPaid" value="${payment.amount_paid || 0}" min="0.01" step="0.01">
-                    <small style="color: var(--text-light); display: block; margin-top: 4px;">How much has this tenant actually paid toward the total above?</small>
-                </div>
                 <div class="form-group">
                     <label style="cursor: pointer; display: block; margin-bottom: 4px;" onclick="Payments.toggleNotes()">
                         <span id="notesToggleIcon">▶</span> Add Notes
@@ -432,7 +371,7 @@ const Payments = {
                         <textarea class="form-control" id="paymentNotes" rows="2">${escapeHTML(payment.notes || '')}</textarea>
                     </div>
                 </div>
-                ${this.getTotalHTML(withoutDue, totalWithDue, payment.amount_paid || 0, payment.status)}
+                ${this.getTotalHTML(withoutDue, totalWithDue)}
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="paymentSubmitBtn">Update Payment</button>
@@ -461,11 +400,10 @@ const Payments = {
                 document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 document.getElementById('paymentStatus').value = this.dataset.status;
-                Payments.updateTotal();
             });
         });
         
-        ['paymentRent', 'paymentElectricity', 'paymentGas', 'paymentDues', 'paymentAmountPaid'].forEach(id => {
+        ['paymentRent', 'paymentElectricity', 'paymentGas', 'paymentDues'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.addEventListener('input', () => {
                 Payments.updateTotal();
@@ -474,7 +412,6 @@ const Payments = {
         });
         
         this.updateDuesConstraint(false);
-        this.updateTotal();
         
         const tenantSelect = document.getElementById('paymentTenant');
         if (tenantSelect && tenantSelect.tagName === 'SELECT') {
@@ -530,18 +467,6 @@ const Payments = {
             showNotification('Rent must be greater than 0', 'error');
             return;
         }
-        if (fields.status === 'partial') {
-            if (!fields.amountPaid || fields.amountPaid <= 0) {
-                showNotification('Enter the amount received for a partial payment', 'error');
-                return;
-            }
-            if (fields.amountPaid >= totalPayment) {
-                showNotification('Amount received must be less than the total amount due for a partial payment', 'error');
-                return;
-            }
-        }
-        
-        const resolvedAmountPaid = this.resolveAmountPaid(fields.status, totalPayment, fields.amountPaid);
         
         this._isProcessing = true;
         if (submitBtn) {
@@ -562,7 +487,6 @@ const Payments = {
                     gas: fields.gas,
                     previous_dues: fields.dues,
                     total_payment: totalPayment,
-                    amount_paid: resolvedAmountPaid,
                     status: fields.status,
                     notes: fields.notes,
                     created_at: new Date().toISOString()
@@ -588,7 +512,6 @@ const Payments = {
                 gas: fields.gas,
                 previousDues: fields.dues,
                 totalPayment,
-                amountPaid: resolvedAmountPaid,
                 status: fields.status,
                 notes: fields.notes,
                 customCharges: []
@@ -630,18 +553,6 @@ const Payments = {
             showNotification('Rent must be greater than 0', 'error');
             return;
         }
-        if (fields.status === 'partial') {
-            if (!fields.amountPaid || fields.amountPaid <= 0) {
-                showNotification('Enter the amount received for a partial payment', 'error');
-                return;
-            }
-            if (fields.amountPaid >= totalPayment) {
-                showNotification('Amount received must be less than the total amount due for a partial payment', 'error');
-                return;
-            }
-        }
-        
-        const resolvedAmountPaid = this.resolveAmountPaid(fields.status, totalPayment, fields.amountPaid);
         
         this._isProcessing = true;
         if (submitBtn) {
@@ -661,7 +572,6 @@ const Payments = {
                     gas: fields.gas,
                     previous_dues: fields.dues,
                     total_payment: totalPayment,
-                    amount_paid: resolvedAmountPaid,
                     status: fields.status,
                     notes: fields.notes
                 });
@@ -685,7 +595,6 @@ const Payments = {
                 gas: fields.gas,
                 previousDues: fields.dues,
                 totalPayment,
-                amountPaid: resolvedAmountPaid,
                 status: fields.status,
                 notes: fields.notes,
                 customCharges: []

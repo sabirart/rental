@@ -131,13 +131,8 @@ const Recycle = {
             return;
         }
         try {
-            const response = await API.request(`/recycle/recover/${id}`, 'POST');
-            const warnings = response && response.warnings;
-            if (warnings && warnings.length > 0) {
-                showNotification(response.message || 'Item recovered with changes - see recycle bin details.', 'warning');
-            } else {
-                showNotification((response && response.message) || 'Item recovered successfully', 'success');
-            }
+            await API.request(`/recycle/recover/${id}`, 'POST');
+            showNotification('Item recovered successfully', 'success');
             
             // Reload recycle items
             await this.loadItems();

@@ -1,18 +1,9 @@
 // backend/models/Tenant.js
 
-const database = require('../config/database');
-const { query, get, run } = database;
+const { query, get, run } = require('../config/database');
 const RecycleBin = require('./RecycleBin');
 
 class Tenant {
-    // Every method below that participates in a multi-table write (create,
-    // update, findByCNIC used as a pre-insert check) accepts an optional
-    // trailing `db` executor ({query,get,run}). When called from inside
-    // config/database.js's transaction(), the caller passes the
-    // transaction-scoped executor so these statements run on the same
-    // connection/BEGIN block as the related Property/Payment writes
-    // (see tenantController.create/update). When omitted, it defaults to
-    // the normal pooled query/get/run - existing call sites are unaffected.
     static async findAll(userId) {
         try {
             const results = await query(`
@@ -42,11 +33,11 @@ class Tenant {
         }
     }
 
-    static async findById(id, userId, db = database) {
+    static async findById(id, userId) {
         try {
             const params = userId ? [id, userId] : [id];
             const userClause = userId ? 'AND t.user_id = ?' : '';
-            const result = await db.get(`
+            const result = await get(`
                 SELECT t.*, p.name as property_name, p.address as property_address
                 FROM tenants t
                 LEFT JOIN properties p ON t.property_id = p.id
@@ -72,7 +63,7 @@ class Tenant {
         }
     }
 
-    static async create(data, userId, db = database) {
+    static async create(data, userId) {
         try {
             const { id, name, fatherName, cnic, location, description, propertyId, roomNumber, status, profile_pic, documents, mobileNumber, advancePayment, leaseEndDate } = data;
             
@@ -81,29 +72,27 @@ class Tenant {
             }
             
             // CNIC only needs to be unique within this landlord's own tenant list.
-            // Re-checked here (not just by the caller) so it's authoritative
-            // against whichever connection/transaction is actually doing the insert.
-            const duplicate = await db.get('SELECT id FROM tenants WHERE cnic = ? AND user_id = ?', [cnic, userId]);
+            const duplicate = await get('SELECT id FROM tenants WHERE cnic = ? AND user_id = ?', [cnic, userId]);
             if (duplicate) {
                 throw new Error('A tenant with this CNIC already exists');
             }
             
             const documentsJson = Array.isArray(documents) ? JSON.stringify(documents) : '[]';
             
-            await db.run(
+            await run(
                 `INSERT INTO tenants (id, user_id, name, father_name, cnic, location, description, property_id, room_number, status, profile_pic, documents, mobile_number, advance_payment, lease_end_date)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [id, userId, name, fatherName, cnic, location, description || null, propertyId || null, roomNumber || null, status || 'active', profile_pic || null, documentsJson, mobileNumber || null, advancePayment || 0, leaseEndDate || null]
             );
             
-            return await this.findById(id, userId, db);
+            return await this.findById(id, userId);
         } catch (error) {
             console.error('Error in Tenant.create:', error.message);
             throw error;
         }
     }
 
-    static async update(id, data, userId, db = database) {
+    static async update(id, data, userId) {
         try {
             const { name, fatherName, cnic, location, description, propertyId, roomNumber, status, profile_pic, documents, mobileNumber, advancePayment, leaseEndDate } = data;
             
@@ -111,7 +100,7 @@ class Tenant {
                 throw new Error('Required fields missing: name, fatherName, cnic, location');
             }
             
-            const duplicate = await db.get('SELECT id FROM tenants WHERE cnic = ? AND user_id = ? AND id != ?', [cnic, userId, id]);
+            const duplicate = await get('SELECT id FROM tenants WHERE cnic = ? AND user_id = ? AND id != ?', [cnic, userId, id]);
             if (duplicate) {
                 throw new Error('A tenant with this CNIC already exists');
             }
@@ -120,12 +109,12 @@ class Tenant {
             
             // Preserve mobile number / advance payment when a caller (e.g. document
             // removal) sends an update payload that doesn't include these fields.
-            const existing = await this.findById(id, userId, db);
+            const existing = await this.findById(id, userId);
             const finalMobileNumber = mobileNumber !== undefined ? (mobileNumber || null) : (existing ? existing.mobile_number : null);
             const finalAdvancePayment = advancePayment !== undefined ? (advancePayment || 0) : (existing ? existing.advance_payment : 0);
             const finalLeaseEndDate = leaseEndDate !== undefined ? (leaseEndDate || null) : (existing ? existing.lease_end_date : null);
             
-            await db.run(
+            await run(
                 `UPDATE tenants 
                  SET name = ?, father_name = ?, cnic = ?, location = ?, 
                      description = ?, property_id = ?, room_number = ?, status = ?,
@@ -134,23 +123,23 @@ class Tenant {
                 [name, fatherName, cnic, location, description || null, propertyId || null, roomNumber || null, status || 'active', profile_pic || null, documentsJson, finalMobileNumber, finalAdvancePayment, finalLeaseEndDate, id, userId]
             );
             
-            return await this.findById(id, userId, db);
+            return await this.findById(id, userId);
         } catch (error) {
             console.error('Error in Tenant.update:', error.message);
             throw error;
         }
     }
 
-    static async delete(id, userId, db = database) {
+    static async delete(id, userId) {
         try {
-            const tenant = await this.findById(id, userId, db);
+            const tenant = await this.findById(id, userId);
             if (!tenant) {
                 throw new Error('Tenant not found');
             }
             
-            await RecycleBin.addTenant(tenant, userId, db);
+            await RecycleBin.addTenant(tenant, userId);
             
-            await db.run('DELETE FROM tenants WHERE id = ? AND user_id = ?', [id, userId]);
+            await run('DELETE FROM tenants WHERE id = ? AND user_id = ?', [id, userId]);
             return tenant;
         } catch (error) {
             console.error('Error in Tenant.delete:', error.message);

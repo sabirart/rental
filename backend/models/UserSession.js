@@ -11,11 +11,6 @@ class UserSession {
                  VALUES (?, ?, ?)`,
                 [userId, token, expiresAt]
             );
-            // No scheduled cleanup job exists in this single-process
-            // deployment, so instead of letting expired session rows
-            // accumulate forever, sweep them out whenever a new session is
-            // created (cheap, fire-and-forget, never blocks the login).
-            this.deleteExpired().catch(err => console.error('Session cleanup failed:', err.message));
         } catch (error) {
             console.error('Error in UserSession.create:', error.message);
             throw error;

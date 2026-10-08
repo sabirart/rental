@@ -9,11 +9,11 @@ const authMiddleware = require('../middleware/auth');
 router.use(authMiddleware.authenticate);
 
 router.get('/', tenantController.getAll);
-router.get('/property/:propertyId', tenantController.getByProperty);
-router.delete('/clear', tenantController.clearAll); // must come before '/:id'
 router.get('/:id', tenantController.getById);
+router.get('/property/:propertyId', tenantController.getByProperty);
 router.post('/', validateTenant, validate, tenantController.create);
 router.put('/:id', validateTenant, validate, tenantController.update);
 router.delete('/:id', tenantController.delete);
+router.delete('/clear', tenantController.clearAll);
 
 module.exports = router;

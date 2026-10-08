@@ -30,13 +30,8 @@ const Dashboard = {
             const currentMonth = getCurrentMonth();
             const currentYear = getCurrentYear();
             const monthlyRevenue = payments
-                .filter(p => p.month === currentMonth && p.year === currentYear)
-                .reduce((sum, p) => {
-                    const received = p.status === 'paid' ? (p.total_payment || p.total || 0)
-                        : p.status === 'unpaid' ? 0
-                        : (p.amount_paid || 0);
-                    return sum + received;
-                }, 0);
+                .filter(p => p.month === currentMonth && p.year === currentYear && p.status === 'paid')
+                .reduce((sum, p) => sum + (p.total_payment || p.total || 0), 0);
             document.getElementById('monthlyRevenue').textContent = formatCurrency(monthlyRevenue);
             
             this.renderRatios();

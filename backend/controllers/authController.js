@@ -2,6 +2,7 @@ const User = require('../models/User');
 const UserSession = require('../models/UserSession');
 const OTP = require('../models/OTP');
 const { AppError } = require('../middleware/errorHandler');
+const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
@@ -15,16 +16,11 @@ function generateOTP() {
 }
 
 function generateToken(userId) {
-    // Session tokens are opaque, random strings - not signed/verified JWTs.
-    // Authentication has always worked by looking the raw token up in
-    // user_sessions (see middleware/auth.js) and checking that row's own
-    // expires_at; jwt.verify was never called anywhere in this codebase, so
-    // a JWT's signature and embedded expiry were decorative. A 256-bit
-    // random token is exactly as secure for this purpose (unguessable,
-    // revocable by deleting the row) without the unused complexity/
-	// dependency of signing and "verifying" a token whose real
-	// authorization gate is the database, not the signature.
-    return crypto.randomBytes(32).toString('hex');
+    return jwt.sign(
+        { userId },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRE || '7d' }
+    );
 }
 
 function getExpiresAt(days = 7) {
@@ -157,7 +153,7 @@ const authController = {
             }
             
             const storedOTP = await OTP.findByEmail(email, 'verify');
-            if (!storedOTP || !OTP.matches(storedOTP.otp, otp)) {
+            if (!storedOTP || storedOTP.otp !== otp) {
                 throw new AppError('Invalid or expired OTP', 400);
             }
             
@@ -212,7 +208,13 @@ const authController = {
             const otp = generateOTP();
             const expiresAt = getExpiresAt(0.0417);
             
-            await OTP.replace(email, 'verify', otp, expiresAt);
+            await OTP.deleteByEmail(email, 'verify');
+            await OTP.create({
+                email,
+                otp,
+                type: 'verify',
+                expiresAt
+            });
             
             await sendEmail(
                 email,
@@ -262,7 +264,13 @@ const authController = {
                 const otp = generateOTP();
                 const expiresAt = getExpiresAt(0.0417);
                 
-                await OTP.replace(email, 'verify', otp, expiresAt);
+                await OTP.deleteByEmail(email, 'verify');
+                await OTP.create({
+                    email,
+                    otp,
+                    type: 'verify',
+                    expiresAt
+                });
                 
                 await sendEmail(
                     email,
@@ -437,7 +445,13 @@ const authController = {
             const otp = generateOTP();
             const expiresAt = getExpiresAt(0.0417);
             
-            await OTP.replace(email, 'reset', otp, expiresAt);
+            await OTP.deleteByEmail(email, 'reset');
+            await OTP.create({
+                email,
+                otp,
+                type: 'reset',
+                expiresAt
+            });
             
             await sendEmail(
                 email,
@@ -479,7 +493,7 @@ const authController = {
             }
             
             const storedOTP = await OTP.findByEmail(email, 'reset');
-            if (!storedOTP || !OTP.matches(storedOTP.otp, otp)) {
+            if (!storedOTP || storedOTP.otp !== otp) {
                 throw new AppError('Invalid or expired OTP', 400);
             }
             

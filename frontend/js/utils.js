@@ -66,27 +66,6 @@ function validateFileSize(file, maxSizeMB = 5) {
     return file.size <= maxSizeMB * 1024 * 1024;
 }
 
-// A tenant's profile picture + documents are all sent as base64 in a single
-// JSON request body, and base64 inflates raw bytes by ~1.33x. This cap is
-// the raw (pre-base64) budget for everything attached in one submit, and is
-// deliberately kept in sync with the backend's express.json({ limit })
-// in backend/server.js (28mb there = this 20MB raw budget, base64-encoded,
-// plus headroom for the rest of the form's JSON). If one changes, the other
-// must change too, or uploads that pass this check can still be rejected by
-// the server with a generic "request entity too large" error.
-const MAX_TOTAL_UPLOAD_MB = 20;
-
-// Sums a profile picture file (optional) + an array of document files
-// (optional) + any already-saved document sizes in bytes (for edits, where
-// existing documents also count toward the same combined budget), and
-// returns whether the total raw size is within MAX_TOTAL_UPLOAD_MB.
-function validateTotalUploadSize(profilePicFile, documentFiles = [], existingDocsBytes = 0) {
-    const profileBytes = profilePicFile ? profilePicFile.size : 0;
-    const newDocsBytes = (documentFiles || []).reduce((sum, f) => sum + (f ? f.size : 0), 0);
-    const totalBytes = profileBytes + newDocsBytes + existingDocsBytes;
-    return totalBytes <= MAX_TOTAL_UPLOAD_MB * 1024 * 1024;
-}
-
 // Extensions for image formats whose MIME type browsers often fail to report
 // correctly (RAW camera formats in particular), used as a fallback check.
 const IMAGE_FILE_EXTENSIONS = [

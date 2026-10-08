@@ -1,39 +1,7 @@
-const database = require('../config/database');
-const { query, get, run } = database;
+const { query, get, run } = require('../config/database');
 const UserSettings = require('./UserSettings');
 
 class Payment {
-    // Given a status + the amounts on a payment, works out the correct
-    // amount_paid: 'paid' always means the full total was received, 'unpaid'
-    // always means nothing was received yet, and 'partial' requires an
-    // explicit amount strictly between 0 and the total (the caller must say
-    // how much actually came in - there's no way to infer it). This is the
-    // single choke point that keeps `status` and `amount_paid` from ever
-    // disagreeing, instead of trusting whatever combination a caller sends.
-    static _resolveAmountPaid(status, totalPayment, amountPaidInput) {
-        const total = Number(totalPayment) || 0;
-        const resolvedStatus = status || 'unpaid';
-
-        if (resolvedStatus === 'paid') {
-            return total;
-        }
-        if (resolvedStatus === 'unpaid') {
-            return 0;
-        }
-        // partial
-        const amount = amountPaidInput === undefined || amountPaidInput === null || amountPaidInput === ''
-            ? NaN
-            : Number(amountPaidInput);
-        if (!Number.isFinite(amount) || amount <= 0) {
-            throw new Error('A partial payment requires an amount received greater than 0');
-        }
-        if (amount >= total) {
-            throw new Error('Amount received for a partial payment must be less than the total amount due');
-        }
-        return amount;
-    }
-
-
     static async findAll(userId, filters = {}) {
         try {
             let sql = `
@@ -62,11 +30,11 @@ class Payment {
         }
     }
 
-    static async findById(id, userId, db = database) {
+    static async findById(id, userId) {
         try {
             const params = userId ? [id, userId] : [id];
             const userClause = userId ? 'AND p.user_id = ?' : '';
-            const result = await db.get(`
+            const result = await get(`
                 SELECT p.*, t.name as tenant_name, t.cnic as tenant_cnic
                 FROM payments p
                 LEFT JOIN tenants t ON p.tenant_id = t.id
@@ -82,11 +50,11 @@ class Payment {
         }
     }
 
-    static async create(data, userId, db = database) {
+    static async create(data, userId) {
         try {
             const { 
                 id, tenantId, month, year, monthlyRent, 
-                electricity, gas, previousDues, totalPayment, amountPaid,
+                electricity, gas, previousDues, totalPayment, 
                 customCharges, status, notes 
             } = data;
             
@@ -96,32 +64,30 @@ class Payment {
             if (monthlyRent === undefined || monthlyRent < 0) throw new Error('Monthly rent must be a positive number');
             
             const customChargesJson = JSON.stringify(customCharges || []);
-            const resolvedStatus = status || 'unpaid';
-            const resolvedAmountPaid = this._resolveAmountPaid(resolvedStatus, totalPayment, amountPaid);
             
-            await db.run(
+            await run(
                 `INSERT INTO payments (
                     id, user_id, tenant_id, month, year, monthly_rent, 
-                    electricity, gas, previous_dues, total_payment, amount_paid,
+                    electricity, gas, previous_dues, total_payment, 
                     custom_charges, status, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     id, userId, tenantId, month, year, monthlyRent, 
-                    electricity || 0, gas || 0, previousDues || 0, totalPayment, resolvedAmountPaid,
-                    customChargesJson, resolvedStatus, notes || null
+                    electricity || 0, gas || 0, previousDues || 0, totalPayment, 
+                    customChargesJson, status || 'unpaid', notes || null
                 ]
             );
             
-            return await this.findById(id, userId, db);
+            return await this.findById(id, userId);
         } catch (error) {
             console.error('Error in Payment.create:', error.message);
             throw error;
         }
     }
 
-    static async update(id, data, userId, db = database) {
+    static async update(id, data, userId) {
         try {
-            const { tenantId, month, year, monthlyRent, electricity, gas, previousDues, totalPayment, amountPaid, customCharges, status, notes } = data;
+            const { tenantId, month, year, monthlyRent, electricity, gas, previousDues, totalPayment, customCharges, status, notes } = data;
             
             if (!tenantId) throw new Error('Tenant ID is required');
             if (!month || month < 1 || month > 12) throw new Error('Month must be between 1 and 12');
@@ -129,19 +95,17 @@ class Payment {
             if (monthlyRent === undefined || monthlyRent < 0) throw new Error('Monthly rent must be a positive number');
             
             const customChargesJson = JSON.stringify(customCharges || []);
-            const resolvedStatus = status || 'unpaid';
-            const resolvedAmountPaid = this._resolveAmountPaid(resolvedStatus, totalPayment, amountPaid);
             
-            await db.run(
+            await run(
                 `UPDATE payments 
                  SET tenant_id = ?, month = ?, year = ?, monthly_rent = ?, 
-                     electricity = ?, gas = ?, previous_dues = ?, total_payment = ?, amount_paid = ?,
+                     electricity = ?, gas = ?, previous_dues = ?, total_payment = ?,
                      custom_charges = ?, status = ?, notes = ?
                  WHERE id = ? AND user_id = ?`,
-                [tenantId, month, year, monthlyRent, electricity || 0, gas || 0, previousDues || 0, totalPayment, resolvedAmountPaid, customChargesJson, resolvedStatus, notes || null, id, userId]
+                [tenantId, month, year, monthlyRent, electricity || 0, gas || 0, previousDues || 0, totalPayment, customChargesJson, status || 'unpaid', notes || null, id, userId]
             );
             
-            return await this.findById(id, userId, db);
+            return await this.findById(id, userId);
         } catch (error) {
             console.error('Error in Payment.update:', error.message);
             throw error;
@@ -156,15 +120,6 @@ class Payment {
             return payment;
         } catch (error) {
             console.error('Error in Payment.delete:', error.message);
-            throw error;
-        }
-    }
-
-    static async clearAll(userId) {
-        try {
-            await run('DELETE FROM payments WHERE user_id = ?', [userId]);
-        } catch (error) {
-            console.error('Error in Payment.clearAll:', error.message);
             throw error;
         }
     }
@@ -185,16 +140,11 @@ class Payment {
     static async getMonthlySummary(year, month, userId) {
         try {
             if (!year || !month) throw new Error('Year and month are required');
-            // total_collected/total_pending are now based on amount_paid
-            // (actual money received) rather than treating a 'partial'
-            // payment as $0 collected - a partially-paid record now
-            // correctly contributes its received amount to "collected" and
-            // its remaining balance (total - paid) to "pending".
             const result = await get(`
                 SELECT 
                     COUNT(*) as total_records,
-                    COALESCE(SUM(amount_paid), 0) as total_collected,
-                    COALESCE(SUM(total_payment - amount_paid), 0) as total_pending,
+                    COALESCE(SUM(CASE WHEN status = 'paid' THEN total_payment ELSE 0 END), 0) as total_collected,
+                    COALESCE(SUM(CASE WHEN status IN ('unpaid', 'partial') THEN total_payment ELSE 0 END), 0) as total_pending,
                     COALESCE(AVG(total_payment), 0) as average_payment
                 FROM payments
                 WHERE year = ? AND month = ? AND user_id = ?
@@ -210,17 +160,12 @@ class Payment {
         try {
             const currentYear = new Date().getFullYear();
             const currentMonth = new Date().getMonth() + 1;
-            // monthly_revenue reflects actual money received this period
-            // (SUM of amount_paid, which is 0 for unpaid, the full total for
-            // paid, and the real partial amount for partial), instead of
-            // only counting fully-paid records and silently excluding any
-            // partial payments a tenant has already made.
             const result = await get(`
                 SELECT 
                     (SELECT COUNT(*) FROM properties WHERE user_id = ?) as total_properties,
                     (SELECT COUNT(*) FROM tenants WHERE status = 'active' AND user_id = ?) as total_tenants,
-                    (SELECT COUNT(*) FROM rooms r JOIN properties p ON r.property_id = p.id WHERE r.status = 'occupied' AND p.user_id = ?) as occupied_rooms,
-                    COALESCE((SELECT SUM(amount_paid) FROM payments WHERE year = ? AND month = ? AND user_id = ?), 0) as monthly_revenue
+                    (SELECT COUNT(*) FROM tenants WHERE status = 'active' AND property_id IS NOT NULL AND user_id = ?) as occupied_rooms,
+                    COALESCE((SELECT SUM(total_payment) FROM payments WHERE year = ? AND month = ? AND status = 'paid' AND user_id = ?), 0) as monthly_revenue
             `, [userId, userId, userId, currentYear, currentMonth, userId]);
             return result || { total_properties: 0, total_tenants: 0, occupied_rooms: 0, monthly_revenue: 0 };
         } catch (error) {
@@ -278,18 +223,12 @@ class Payment {
                     if (property) rent = property.base_rent || 0;
                 }
 
-                // Carry forward only the actual remaining balance from last
-                // period (total due minus whatever was actually received),
-                // not the full amount - a partial payment now correctly
-                // reduces what's carried forward instead of the tenant being
-                // charged for the same rent twice. A fully paid period
-                // contributes nothing, and the old record's own status and
-                // amounts are left completely untouched either way.
-                const lastRemaining = lastPayment
-                    ? Math.max(0, (lastPayment.total_payment || 0) - (lastPayment.amount_paid || 0))
-                    : 0;
+                // Carry forward last period's amount as dues only if it was
+                // left unpaid/partial - a fully paid period contributes
+                // nothing, and the old record's own partial/unpaid status and
+                // amount are left completely untouched.
                 const previousDues = (lastPayment && lastPayment.status !== 'paid')
-                    ? lastRemaining
+                    ? lastPayment.total_payment
                     : 0;
 
                 // Electricity and gas reset to their default (0) each period.

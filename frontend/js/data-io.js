@@ -68,37 +68,6 @@ const DataIO = {
             yearSelect.value = String(currentYear);
         }
 
-        // CSV From/To range selects - same month/year options as above,
-        // defaulting the whole range to just the current month.
-        const csvSelectIds = ['exportCsvFromMonth', 'exportCsvToMonth'];
-        csvSelectIds.forEach(id => {
-            const sel = document.getElementById(id);
-            if (sel && sel.options.length === 0) {
-                const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-                months.forEach((m, i) => {
-                    const opt = document.createElement('option');
-                    opt.value = String(i + 1);
-                    opt.textContent = m;
-                    sel.appendChild(opt);
-                });
-                sel.value = String(new Date().getMonth() + 1);
-            }
-        });
-        ['exportCsvFromYear', 'exportCsvToYear'].forEach(id => {
-            const sel = document.getElementById(id);
-            if (sel) {
-                sel.innerHTML = '';
-                const currentYear = new Date().getFullYear();
-                for (let y = currentYear - 3; y <= currentYear + 1; y++) {
-                    const opt = document.createElement('option');
-                    opt.value = String(y);
-                    opt.textContent = String(y);
-                    sel.appendChild(opt);
-                }
-                sel.value = String(currentYear);
-            }
-        });
-
         const payments = (App.state && App.state.payments) || [];
         if (receiptSelect) {
             // When opened as a shortcut from a specific tenant's detail
@@ -114,6 +83,13 @@ const DataIO = {
     },
 
     downloadJson(filename, data) {
+        if (window.NativeExport && window.NativeExport.isNative()) {
+            window.NativeExport.downloadJson(filename, data).catch(err => {
+                console.error('Native export failed:', err);
+                Components.showWarning('Could not export file: ' + (err.message || err));
+            });
+            return;
+        }
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -162,89 +138,24 @@ const DataIO = {
             this.generateReceipt(payment, tenant);
             return;
         }
-
-        if (type === 'csv') {
-            const fromMonth = parseInt(document.getElementById('exportCsvFromMonth').value);
-            const fromYear = parseInt(document.getElementById('exportCsvFromYear').value);
-            const toMonth = parseInt(document.getElementById('exportCsvToMonth').value);
-            const toYear = parseInt(document.getElementById('exportCsvToYear').value);
-
-            const fromKey = fromYear * 12 + fromMonth;
-            const toKey = toYear * 12 + toMonth;
-            const [startKey, endKey] = fromKey <= toKey ? [fromKey, toKey] : [toKey, fromKey];
-
-            const filtered = payments.filter(p => {
-                const key = (p.year * 12) + p.month;
-                return key >= startKey && key <= endKey;
-            });
-
-            if (filtered.length === 0) {
-                Components.showWarning('No payment records found in that date range.');
-                return;
-            }
-
-            this.downloadPaymentsCsv(filtered, tenants);
-            showNotification('CSV export downloaded', 'success');
-            return;
-        }
-    },
-
-    // Builds a spreadsheet-friendly CSV of payments for bookkeeping -
-    // distinct from the JSON export (a full data backup/re-import format)
-    // and the PDF receipt (a single tenant-facing document): this is meant
-    // to be opened directly in Excel/Google Sheets for accounting.
-    downloadPaymentsCsv(payments, tenants) {
-        const header = ['Tenant', 'Month', 'Year', 'Rent', 'Electricity', 'Gas', 'Previous Dues', 'Total Due', 'Amount Received', 'Remaining Balance', 'Status', 'Notes'];
-
-        const escapeCsv = (value) => {
-            const str = String(value === undefined || value === null ? '' : value);
-            if (/[",\n]/.test(str)) {
-                return `"${str.replace(/"/g, '""')}"`;
-            }
-            return str;
-        };
-
-        const rows = payments
-            .slice()
-            .sort((a, b) => (a.year - b.year) || (a.month - b.month))
-            .map(p => {
-                const tenant = tenants.find(t => t.id === p.tenant_id);
-                const total = p.total_payment || 0;
-                const amountPaid = p.status === 'paid' ? total : p.status === 'unpaid' ? 0 : (p.amount_paid || 0);
-                const remaining = Math.max(0, total - amountPaid);
-                return [
-                    tenant ? tenant.name : (p.tenant_name || 'Unknown'),
-                    monthName(p.month),
-                    p.year,
-                    (p.monthly_rent || 0).toFixed(2),
-                    (p.electricity || 0).toFixed(2),
-                    (p.gas || 0).toFixed(2),
-                    (p.previous_dues || 0).toFixed(2),
-                    total.toFixed(2),
-                    amountPaid.toFixed(2),
-                    remaining.toFixed(2),
-                    p.status || 'unpaid',
-                    p.notes || ''
-                ];
-            });
-
-        const csvContent = [header, ...rows].map(row => row.map(escapeCsv).join(',')).join('\r\n');
-        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `payments_export_${new Date().toISOString().split('T')[0]}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
     },
 
     generateReceipt(payment, tenant) {
+        const owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
+
+        if (window.NativeExport && window.NativeExport.isNative()) {
+            window.NativeExport.generateReceiptPdf(payment, tenant, owner).catch(err => {
+                console.error('Native receipt generation failed:', err);
+                Components.showWarning('Could not generate receipt: ' + (err.message || err));
+            });
+            return;
+        }
+
         const win = window.open('', '_blank', 'width=480,height=640');
         if (!win) {
             Components.showWarning('Please allow pop-ups to generate the receipt.');
             return;
         }
-        const owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
         const rows = [
             ['Rent', payment.monthly_rent],
             ['Electricity', payment.electricity],
@@ -252,11 +163,6 @@ const DataIO = {
             ['Previous Dues', payment.previous_dues]
         ];
         (payment.custom_charges || []).forEach(c => rows.push([c.label || 'Other Charge', c.amount || 0]));
-
-        const amountPaid = payment.status === 'paid' ? (payment.total_payment || 0)
-            : payment.status === 'unpaid' ? 0
-            : (payment.amount_paid || 0);
-        const remaining = Math.max(0, (payment.total_payment || 0) - amountPaid);
 
         win.document.write(`
             <html>
@@ -280,10 +186,6 @@ const DataIO = {
                 <table>
                     ${rows.map(([label, amt]) => `<tr><td>${escapeHTML(String(label))}</td><td>${formatCurrency(amt || 0)}</td></tr>`).join('')}
                     <tr class="total-row"><td>Total</td><td>${formatCurrency(payment.total_payment || 0)}</td></tr>
-                    ${payment.status === 'partial' ? `
-                    <tr><td>Amount Received</td><td>${formatCurrency(amountPaid)}</td></tr>
-                    <tr><td>Remaining Balance</td><td>${formatCurrency(remaining)}</td></tr>
-                    ` : ''}
                 </table>
                 <span class="status">${escapeHTML(payment.status || 'unpaid')}</span>
             </body>

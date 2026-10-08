@@ -98,10 +98,8 @@ async function run(sql, params = []) {
 // Real transactions: a single dedicated client is checked out of the pool
 // so BEGIN/COMMIT/ROLLBACK apply to the same underlying connection (a bare
 // pool.query per statement would risk each statement landing on a
-// different pooled connection). Used by any multi-step write that must
-// succeed or fail as a unit (see RecycleBin.recover, Tenant create/update,
-// Property.update's room resize) so a failure partway through never leaves
-// rooms/tenants/payments in a half-updated state.
+// different pooled connection). Not currently called anywhere in the
+// codebase, but kept correct for future use.
 async function transaction(callback) {
     const client = await pool.connect();
     try {
@@ -207,7 +205,6 @@ async function createTables() {
             gas REAL DEFAULT 0,
             previous_dues REAL DEFAULT 0,
             total_payment REAL NOT NULL DEFAULT 0,
-            amount_paid REAL NOT NULL DEFAULT 0,
             custom_charges TEXT DEFAULT '[]',
             status TEXT DEFAULT 'unpaid',
             notes TEXT,
@@ -296,7 +293,6 @@ async function migrateTables() {
         `ALTER TABLE payments ADD COLUMN IF NOT EXISTS total_payment REAL NOT NULL DEFAULT 0`,
         `ALTER TABLE payments ADD COLUMN IF NOT EXISTS custom_charges TEXT DEFAULT '[]'`,
         `ALTER TABLE payments ADD COLUMN IF NOT EXISTS notes TEXT`,
-        `ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_paid REAL NOT NULL DEFAULT 0`,
         `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS mobile_number TEXT`,
         `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS advance_payment REAL DEFAULT 0`,
         `ALTER TABLE tenants ADD COLUMN IF NOT EXISTS lease_end_date TEXT`,
@@ -314,24 +310,6 @@ async function migrateTables() {
         } catch (err) {
             console.error(`Migration step failed (${sql}):`, err.message);
         }
-    }
-
-    // Backfill amount_paid for rows written before this column existed.
-    // Both statements are self-correcting (re-running them on a database
-    // that's already backfilled is a harmless no-op), so it's safe to run
-    // on every startup rather than only once:
-    //  - 'paid'   always means the full total was received.
-    //  - 'unpaid' always means nothing was received.
-    //  - 'partial' rows created before this column existed have no way to
-    //    know the real amount that was received, so they are deliberately
-    //    left at the column default (0) rather than guessed at - existing
-    //    payment history (status, totals, dates) is never altered, only
-    //    this new field is populated where it can be known for certain.
-    try {
-        await pool.query(`UPDATE payments SET amount_paid = total_payment WHERE status = 'paid' AND amount_paid IS DISTINCT FROM total_payment`);
-        await pool.query(`UPDATE payments SET amount_paid = 0 WHERE status = 'unpaid' AND amount_paid <> 0`);
-    } catch (err) {
-        console.error('amount_paid backfill failed:', err.message);
     }
 
     console.log('Migration check complete');

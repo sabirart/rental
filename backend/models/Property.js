@@ -1,20 +1,13 @@
-const database = require('../config/database');
-const { query, get, run } = database;
+const { query, get, run } = require('../config/database');
 const RecycleBin = require('./RecycleBin');
 
 class Property {
-    // findById/getRooms/updateRoom/addRoom/removeRoom accept an optional
-    // trailing `db` executor so they can participate in a caller's
-    // transaction (see Tenant create/update in tenantController.js and the
-    // room-resize path in Property.update below). Defaults to the normal
-    // pooled connection when omitted, so every existing call site keeps
-    // working unchanged.
     static async findAll(userId) {
         try {
             return await query(`
                 SELECT p.*, 
                        COUNT(t.id) as tenant_count,
-                       (SELECT COUNT(*) FROM rooms r WHERE r.property_id = p.id AND r.status = 'occupied') as occupied_rooms,
+                       COALESCE(SUM(CASE WHEN t.status = 'active' THEN 1 ELSE 0 END), 0) as occupied_rooms,
                        (SELECT COUNT(*) FROM rooms WHERE property_id = p.id) as total_rooms
                 FROM properties p
                 LEFT JOIN tenants t ON p.id = t.property_id AND t.status = 'active'
@@ -28,11 +21,11 @@ class Property {
         }
     }
 
-    static async findById(id, userId, db = database) {
+    static async findById(id, userId) {
         try {
             const params = userId ? [id, userId] : [id];
             const userClause = userId ? 'AND p.user_id = ?' : '';
-            return await db.get(`
+            return await get(`
                 SELECT p.*,
                        (SELECT COUNT(*) FROM tenants WHERE property_id = p.id AND status = 'active') as tenant_count,
                        (SELECT COUNT(*) FROM rooms WHERE property_id = p.id) as total_rooms
@@ -89,57 +82,50 @@ class Property {
                 throw new Error('Base rent must be a positive number');
             }
             
-            // The room-resize (add/remove rows in `rooms`) and the
-            // `properties` row update below must succeed or fail together -
-            // otherwise a mid-loop failure (e.g. hitting an occupied room
-            // while shrinking) could leave some rooms deleted/added and the
-            // property's own total_rooms out of sync with the rooms table.
-            return await database.transaction(async (db) => {
-                const existing = await this.findById(id, userId, db);
-                if (!existing) {
-                    throw new Error('Property not found');
-                }
-
-                // Get current rooms
-                const currentRooms = await this.getRooms(id, db);
-                const existingRoomNumbers = currentRooms.map(r => r.room_number);
-
-                // Add new rooms if totalRooms increased
-                if (totalRooms > existing.total_rooms) {
-                    for (let i = existing.total_rooms + 1; i <= totalRooms; i++) {
-                        if (!existingRoomNumbers.includes(i)) {
-                            await db.run(
-                                'INSERT INTO rooms (property_id, room_number, room_name, status, rent_amount) VALUES (?, ?, ?, ?, ?)',
-                                [id, i, `Room ${i}`, 'available', baseRent]
-                            );
-                        }
-                    }
-                }
-
-                // If totalRooms decreased, remove extra rooms (only if not occupied)
-                if (totalRooms < existing.total_rooms) {
-                    for (let i = totalRooms + 1; i <= existing.total_rooms; i++) {
-                        const room = currentRooms.find(r => r.room_number === i);
-                        if (room && room.status === 'occupied') {
-                            throw new Error(`Cannot remove Room ${i} because it is occupied`);
-                        }
-                        await db.run(
-                            'DELETE FROM rooms WHERE property_id = ? AND room_number = ?',
-                            [id, i]
+            const existing = await this.findById(id, userId);
+            if (!existing) {
+                throw new Error('Property not found');
+            }
+            
+            // Get current rooms
+            const currentRooms = await this.getRooms(id);
+            const existingRoomNumbers = currentRooms.map(r => r.room_number);
+            
+            // Add new rooms if totalRooms increased
+            if (totalRooms > existing.total_rooms) {
+                for (let i = existing.total_rooms + 1; i <= totalRooms; i++) {
+                    if (!existingRoomNumbers.includes(i)) {
+                        await run(
+                            'INSERT INTO rooms (property_id, room_number, room_name, status, rent_amount) VALUES (?, ?, ?, ?, ?)',
+                            [id, i, `Room ${i}`, 'available', baseRent]
                         );
                     }
                 }
-
-                await db.run(
-                    `UPDATE properties 
-                    SET name = ?, address = ?, total_rooms = ?, base_rent = ?, 
-                        status = ?, description = ?
-                    WHERE id = ? AND user_id = ?`,
-                    [name, address, totalRooms, baseRent, status || 'active', description || null, id, userId]
-                );
-
-                return await this.findById(id, userId, db);
-            });
+            }
+            
+            // If totalRooms decreased, remove extra rooms (only if not occupied)
+            if (totalRooms < existing.total_rooms) {
+                for (let i = totalRooms + 1; i <= existing.total_rooms; i++) {
+                    const room = currentRooms.find(r => r.room_number === i);
+                    if (room && room.status === 'occupied') {
+                        throw new Error(`Cannot remove Room ${i} because it is occupied`);
+                    }
+                    await run(
+                        'DELETE FROM rooms WHERE property_id = ? AND room_number = ?',
+                        [id, i]
+                    );
+                }
+            }
+            
+            await run(
+                `UPDATE properties 
+                SET name = ?, address = ?, total_rooms = ?, base_rent = ?, 
+                    status = ?, description = ?
+                WHERE id = ? AND user_id = ?`,
+                [name, address, totalRooms, baseRent, status || 'active', description || null, id, userId]
+            );
+            
+            return await this.findById(id, userId);
         } catch (error) {
             console.error('Error in Property.update:', error.message);
             throw error;
@@ -162,8 +148,7 @@ class Property {
                 throw new Error(`Cannot delete property with ${tenants[0].count} active tenants`);
             }
             
-            const rooms = await this.getRooms(id);
-            await RecycleBin.addProperty(property, userId, rooms);
+            await RecycleBin.addProperty(property, userId);
             await run('DELETE FROM properties WHERE id = ? AND user_id = ?', [id, userId]);
             return property;
         } catch (error) {
@@ -172,9 +157,9 @@ class Property {
         }
     }
 
-    static async getRooms(propertyId, db = database) {
+    static async getRooms(propertyId) {
         try {
-            return await db.query(
+            return await query(
                 'SELECT * FROM rooms WHERE property_id = ? ORDER BY room_number',
                 [propertyId]
             );
@@ -184,7 +169,7 @@ class Property {
         }
     }
 
-    static async updateRoom(propertyId, roomNumber, data, db = database) {
+    static async updateRoom(propertyId, roomNumber, data) {
         try {
             const { status, tenantId, rentAmount, roomName } = data;
             
@@ -193,7 +178,7 @@ class Property {
                 throw new Error('Invalid status. Must be: available, occupied, or maintenance');
             }
             
-            const room = await db.get(
+            const room = await get(
                 'SELECT * FROM rooms WHERE property_id = ? AND room_number = ?',
                 [propertyId, roomNumber]
             );
@@ -202,7 +187,7 @@ class Property {
                 throw new Error('Room not found');
             }
             
-            await db.run(
+            await run(
                 `UPDATE rooms 
                  SET status = COALESCE(?, status), 
                      tenant_id = ?,
@@ -212,7 +197,7 @@ class Property {
                 [status, tenantId || null, rentAmount, roomName, propertyId, roomNumber]
             );
             
-            return await db.get(
+            return await get(
                 'SELECT * FROM rooms WHERE property_id = ? AND room_number = ?',
                 [propertyId, roomNumber]
             );
