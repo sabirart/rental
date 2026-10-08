@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const authMiddleware = require('../middleware/auth');
+const { getStatus } = require('../services/googleDrive');
 const { body, validationResult } = require('express-validator');
 
 const validate = (req, res, next) => {
@@ -68,6 +69,9 @@ router.post('/reset-password', [
 
 // Protected routes
 router.get('/me', authMiddleware.authenticate, authController.me);
+router.post('/google-drive-token', authMiddleware.authenticate, authController.setGoogleDriveToken);
+router.post('/migrate-legacy', authMiddleware.authenticate, authController.migrateLegacy);
+router.get('/google-drive/status', authMiddleware.authenticate, async (req, res, next) => { try { res.json({ success: true, data: await getStatus(req) }); } catch (e) { next(e); } });
 router.put('/profile', authMiddleware.authenticate, [
     body('name').optional().trim().escape(),
     body('profilePic').optional().trim(),

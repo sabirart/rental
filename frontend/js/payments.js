@@ -103,6 +103,7 @@ const Payments = {
             month: parseInt(document.getElementById('paymentMonth')?.value),
             year: parseInt(document.getElementById('paymentYear')?.value),
             rent: parseFloat(document.getElementById('paymentRent')?.value) || 0,
+            rentEnabled: document.getElementById('paymentRentEnabled') ? document.getElementById('paymentRentEnabled').checked : true,
             electricity: parseFloat(document.getElementById('paymentElectricity')?.value) || 0,
             electricityEnabled: document.getElementById('paymentElectricityEnabled') ? document.getElementById('paymentElectricityEnabled').checked : true,
             gas: parseFloat(document.getElementById('paymentGas')?.value) || 0,
@@ -133,6 +134,9 @@ const Payments = {
         // Display totals always show the complete bill. The check controls do
         // not change these two headline totals; they only determine what has
         // actually been received/paid.
+        // Headline totals are bill values, not payment-state values:
+        // unchecked values still belong to the bill total. The checkmarks
+        // only determine paid/unpaid state elsewhere.
         const withoutDue = rent + electricity + gas;
         const totalWithDue = withoutDue + dues;
 
@@ -142,11 +146,42 @@ const Payments = {
         if (withoutDueDisplay) withoutDueDisplay.textContent = formatCurrency(withoutDue);
         if (totalDisplay) totalDisplay.textContent = formatCurrency(totalWithDue);
 
-        this.syncAmountPaidUI(
-            rent, electricity, electricityEnabled,
-            gas, gasEnabled, dues, duesEnabled,
-            totalWithDue, status, amountPaid
-        );
+        if (!document.getElementById('paymentStatus')) {
+            this.updateEditPaymentBreakdown(rent, electricity, this.getFormFields().rentEnabled, electricityEnabled, gas, gasEnabled, dues, duesEnabled);
+        } else {
+            this.syncAmountPaidUI(
+                rent, electricity, electricityEnabled,
+                gas, gasEnabled, dues, duesEnabled,
+                totalWithDue, status, amountPaid
+            );
+        }
+    },
+
+    updateEditPaymentBreakdown(rent, electricity, rentEnabled, electricityEnabled, gas, gasEnabled, dues, duesEnabled) {
+        const rentValue = Number(rent) || 0;
+        const dueValue = Number(dues) || 0;
+        const electricityValue = Number(electricity) || 0;
+        const gasValue = Number(gas) || 0;
+        const total = rentValue + dueValue + electricityValue + gasValue;
+
+        // Edit Payment: Total is always the complete bill. Partial is the
+        // amount remaining/covered after removing every NON-ZERO unchecked
+        // charge. A zero-value charge never affects the calculation.
+        const unpaid =
+            (rentValue > 0 && rentEnabled === false ? rentValue : 0) +
+            (electricityValue > 0 && electricityEnabled === false ? electricityValue : 0) +
+            (gasValue > 0 && gasEnabled === false ? gasValue : 0) +
+            (dueValue > 0 && duesEnabled === false ? dueValue : 0);
+        const partial = Math.max(0, total - unpaid);
+        const set = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = formatCurrency(value);
+        };
+        // Edit Payment intentionally keeps the overview compact: the
+        // individual charge values remain editable above, while this row
+        // shows only the two final totals requested by the UI.
+        set('editPaymentTotalDisplay', total);
+        set('editPaymentWithoutDueDisplay', partial);
     },
 
     // The overview has four separate meanings:
@@ -264,6 +299,69 @@ const Payments = {
         }
     },
     
+    deriveEditPaymentState(fields) {
+        const charges = [
+            { value: Math.max(0, Number(fields.rent) || 0), enabled: fields.rentEnabled !== false },
+            { value: Math.max(0, Number(fields.electricity) || 0), enabled: fields.electricityEnabled !== false },
+            { value: Math.max(0, Number(fields.gas) || 0), enabled: fields.gasEnabled !== false },
+            { value: Math.max(0, Number(fields.dues) || 0), enabled: fields.duesEnabled !== false }
+        ];
+        const total = charges.reduce((sum, charge) => sum + charge.value, 0);
+        const received = charges.reduce((sum, charge) => sum + (charge.value > 0 && charge.enabled ? charge.value : 0), 0);
+        const unpaid = charges.reduce((sum, charge) => sum + (charge.value > 0 && !charge.enabled ? charge.value : 0), 0);
+        const status = total <= 0 ? 'paid' : (unpaid === 0 ? 'paid' : (received > 0 ? 'partial' : 'unpaid'));
+        return { total, received, unpaid, status, partial: Math.max(0, total - unpaid) };
+    },
+
+    getEditPaymentBreakdownHTML(payment = {}) {
+        const rent = Number(payment.monthly_rent || 0);
+        const due = Number(payment.previous_dues || 0);
+        const electricity = Number(payment.electricity || 0);
+        const gas = Number(payment.gas || 0);
+        const rentEnabled = payment.rent_enabled !== false;
+        const dueEnabled = payment.previous_dues_enabled !== false;
+        const electricityEnabled = payment.electricity_enabled !== false;
+        const gasEnabled = payment.gas_enabled !== false;
+        const total = rent + due + electricity + gas;
+        const unpaid =
+            (rent > 0 && !rentEnabled ? rent : 0) +
+            (electricity > 0 && !electricityEnabled ? electricity : 0) +
+            (gas > 0 && !gasEnabled ? gas : 0) +
+            (due > 0 && !dueEnabled ? due : 0);
+        const partial = Math.max(0, total - unpaid);
+        return `
+            <div class="payment-overview edit-payment-breakdown" aria-label="Payment totals">
+                <div class="payment-overview-grid">
+                    <div class="payment-overview-item">
+                        <span class="payment-overview-label">Partial</span>
+                        <span id="editPaymentWithoutDueDisplay" class="payment-overview-value">${formatCurrency(partial)}</span>
+                    </div>
+                    <div class="payment-overview-item payment-overview-item-emphasis">
+                        <span class="payment-overview-label">Total</span>
+                        <span id="editPaymentTotalDisplay" class="payment-overview-value">${formatCurrency(total)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    getEditPaymentOverviewHTML(withoutDue = 0, totalWithDue = 0, payment = {}) {
+        const duesEnabled = payment.previous_dues_enabled !== false;
+        const afterDue = Math.max(0, totalWithDue - (duesEnabled ? 0 : Number(payment.previous_dues || 0)));
+        return `
+            <div class="payment-overview" aria-label="Payment breakdown">
+                <div class="payment-overview-grid">
+                    <div class="payment-overview-item"><span class="payment-overview-label">Home Rent</span><span class="payment-overview-value">${formatCurrency(payment.monthly_rent || 0)}</span></div>
+                    <div class="payment-overview-item"><span class="payment-overview-label">Previous Due</span><span class="payment-overview-value">${formatCurrency(payment.previous_dues || 0)}</span></div>
+                    <div class="payment-overview-item"><span class="payment-overview-label">Electricity</span><span class="payment-overview-value">${formatCurrency(payment.electricity || 0)}</span></div>
+                    <div class="payment-overview-item"><span class="payment-overview-label">Gas</span><span class="payment-overview-value">${formatCurrency(payment.gas || 0)}</span></div>
+                    <div class="payment-overview-item payment-overview-divider"><span class="payment-overview-label">Total Amount</span><span id="paymentTotalDisplay" class="payment-overview-value">${formatCurrency(totalWithDue)}</span></div>
+                    <div class="payment-overview-item payment-overview-item-emphasis"><span class="payment-overview-label">After Due</span><span id="paymentAfterDueDisplay" class="payment-overview-value">${formatCurrency(afterDue)}</span></div>
+                </div>
+            </div>
+        `;
+    },
+
     getTotalHTML(withoutDue = 0, totalWithDue = 0, amountPaid = 0, status = 'unpaid', paidTotal = 0) {
         const resolvedPaid = status === 'paid'
             ? Math.max(0, paidTotal)
@@ -294,13 +392,20 @@ const Payments = {
     },
 
     toggleNotes(trigger) {
-        const scope = trigger?.closest('.modal-content, .popup-box, form') || document;
-        const container = scope.querySelector('[data-payment-notes-container]') || scope.querySelector('#notesContainer');
-        const icon = trigger?.querySelector('[data-notes-icon]') || trigger?.querySelector('#notesToggleIcon');
+        if (!trigger) return;
+        // Scope the toggle to the exact button's form/group. This avoids
+        // intermittent failures when the modal is re-rendered or another
+        // payment form has previously been opened.
+        const form = trigger.closest('form');
+        const group = trigger.closest('.form-group');
+        const container = group?.querySelector('[data-payment-notes-container]')
+            || form?.querySelector('[data-payment-notes-container]');
+        const icon = trigger.querySelector('[data-notes-icon]');
         if (!container) return;
-        const isHidden = getComputedStyle(container).display === 'none';
+        const isHidden = container.style.display === 'none' || getComputedStyle(container).display === 'none';
         container.style.display = isHidden ? 'block' : 'none';
         if (icon) icon.textContent = isHidden ? '▼' : '▶';
+        trigger.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
     },
 
     showAddForm() {
@@ -343,11 +448,11 @@ const Payments = {
                 <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                 <div class="form-group">
                     <label>Electricity</label>
-                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentElectricity" min="0" value="0"><label class="payment-dues-check" title="Include electricity"><input type="checkbox" id="paymentElectricityEnabled" aria-label="Include electricity" checked><span>✓</span></label></div>
+                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentElectricity" min="0" value="0"><label class="payment-dues-check" title="Include electricity"><input type="checkbox" id="paymentElectricityEnabled" aria-label="Include electricity" ${payment.electricity_enabled !== false ? "checked" : ""}><span>✓</span></label></div>
                 </div>
                 <div class="form-group">
                     <label>Gas</label>
-                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentGas" min="0" value="0"><label class="payment-dues-check" title="Include gas"><input type="checkbox" id="paymentGasEnabled" aria-label="Include gas" checked><span>✓</span></label></div>
+                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentGas" min="0" value="0"><label class="payment-dues-check" title="Include gas"><input type="checkbox" id="paymentGasEnabled" aria-label="Include gas" ${payment.gas_enabled !== false ? "checked" : ""}><span>✓</span></label></div>
                 </div>
                 <div class="form-group">
                     <label>Previous Dues</label>
@@ -366,7 +471,7 @@ const Payments = {
                 </div>
                 ${this.getTotalHTML()}
                 <div class="form-group">
-                    <button type="button" class="payment-notes-toggle" id="paymentNotesToggle" data-action="toggle-payment-notes"><span data-notes-icon id="notesToggleIcon">▶</span> Add Notes</button>
+                    <button type="button" class="payment-notes-toggle" data-action="toggle-payment-notes" aria-expanded="false"><span data-notes-icon >▶</span> Add Notes</button>
                     <div data-payment-notes-container id="notesContainer" style="display: none; margin-top: 4px;">
                         <textarea class="form-control" id="paymentNotes" rows="2" placeholder="Additional notes"></textarea>
                     </div>
@@ -448,7 +553,6 @@ const Payments = {
         
         const withoutDue = (payment.monthly_rent || 0) + (payment.electricity || 0) + (payment.gas || 0);
         const totalWithDue = withoutDue + (payment.previous_dues || 0);
-        const paidTotal = (payment.monthly_rent || 0) + (payment.electricity || 0) + (payment.gas || 0) + (payment.previous_dues || 0);
         
         const form = `
             <form id="paymentForm">
@@ -465,36 +569,26 @@ const Payments = {
                 </div>
                 <div class="form-group">
                     <label>Rent <span class="required">*</span></label>
-                    <input type="number" class="form-control" id="paymentRent" value="${payment.monthly_rent}" min="0" required>
+                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentRent" value="${payment.monthly_rent}" min="0" required><label class="payment-dues-check" title="Include home rent"><input type="checkbox" id="paymentRentEnabled" aria-label="Include home rent" ${payment.rent_enabled !== false ? 'checked' : ''}><span>✓</span></label></div>
                 </div>
             </div>
                 <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                 <div class="form-group">
                     <label>Electricity</label>
-                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentElectricity" value="${payment.electricity || 0}" min="0"><label class="payment-dues-check" title="Include electricity"><input type="checkbox" id="paymentElectricityEnabled" aria-label="Include electricity" checked><span>✓</span></label></div>
+                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentElectricity" value="${payment.electricity || 0}" min="0"><label class="payment-dues-check" title="Include electricity"><input type="checkbox" id="paymentElectricityEnabled" aria-label="Include electricity" ${payment.electricity_enabled !== false ? "checked" : ""}><span>✓</span></label></div>
                 </div>
                 <div class="form-group">
                     <label>Gas</label>
-                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentGas" value="${payment.gas || 0}" min="0"><label class="payment-dues-check" title="Include gas"><input type="checkbox" id="paymentGasEnabled" aria-label="Include gas" checked><span>✓</span></label></div>
+                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentGas" value="${payment.gas || 0}" min="0"><label class="payment-dues-check" title="Include gas"><input type="checkbox" id="paymentGasEnabled" aria-label="Include gas" ${payment.gas_enabled !== false ? "checked" : ""}><span>✓</span></label></div>
                 </div>
                 <div class="form-group">
                     <label>Previous Dues</label>
-                    <div class="payment-dues-input-wrap"><input type="number" class="form-control" id="paymentDues" value="${payment.previous_dues || 0}" min="0"><label class="payment-dues-check" title="Include previous dues"><input type="checkbox" id="paymentDuesEnabled" aria-label="Include previous dues" ${payment.previous_dues > 0 ? "checked" : ""}><span>✓</span></label></div>
+                    <div class="payment-dues-input-wrap"><input type="number" class="form-control" id="paymentDues" value="${payment.previous_dues || 0}" min="0"><label class="payment-dues-check" title="Include previous dues"><input type="checkbox" id="paymentDuesEnabled" aria-label="Include previous dues" ${payment.previous_dues_enabled !== false && payment.previous_dues > 0 ? "checked" : ""}><span>✓</span></label></div>
                 </div>
             </div>
+                ${this.getEditPaymentBreakdownHTML(payment)}
                 <div class="form-group">
-                    <label>Status</label>
-                    <div class="status-group">${this.getStatusHTML(payment.status)}</div>
-                    <input type="hidden" id="paymentStatus" value="${payment.status}">
-                </div>
-                <div class="form-group" id="amountPaidGroup" style="display: ${payment.status === 'partial' ? 'block' : 'none'};">
-                    <label>Amount Received <span class="required">*</span></label>
-                    <input type="number" class="form-control" id="paymentAmountPaid" value="${payment.amount_paid || 0}" min="0.01" step="0.01">
-                    <small style="color: var(--text-light); display: block; margin-top: 4px;">How much has this tenant actually paid toward the total above?</small>
-                </div>
-                ${this.getTotalHTML(withoutDue, totalWithDue, payment.amount_paid || 0, payment.status, paidTotal)}
-                <div class="form-group">
-                    <button type="button" class="payment-notes-toggle" id="paymentNotesToggle" data-action="toggle-payment-notes"><span data-notes-icon id="notesToggleIcon">▶</span> Add Notes</button>
+                    <button type="button" class="payment-notes-toggle" data-action="toggle-payment-notes" aria-expanded="false"><span data-notes-icon >▶</span> Add Notes</button>
                     <div data-payment-notes-container id="notesContainer" style="display: none; margin-top: 4px;">
                         <textarea class="form-control" id="paymentNotes" rows="2">${escapeHTML(payment.notes || '')}</textarea>
                     </div>
@@ -508,6 +602,16 @@ const Payments = {
         
         App.openModal('Edit Payment', form);
         this.setupFormHandlers();
+        // Bind directly as well as through the document delegate so a newly
+        // mounted modal always has a reliable Notes control.
+        const paymentForm = document.getElementById('paymentForm');
+        paymentForm?.querySelectorAll('[data-action="toggle-payment-notes"]').forEach((button) => {
+            button.onclick = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleNotes(button);
+            };
+        });
     },
 
     setupFormHandlers() {
@@ -545,18 +649,35 @@ const Payments = {
             });
         }
 
-        ['paymentRent', 'paymentElectricity', 'paymentGas', 'paymentDues', 'paymentAmountPaid', 'paymentDuesEnabled', 'paymentElectricityEnabled', 'paymentGasEnabled'].forEach(id => {
+        ['paymentRent', 'paymentRentEnabled', 'paymentElectricity', 'paymentElectricityEnabled', 'paymentGas', 'paymentGasEnabled', 'paymentDues', 'paymentAmountPaid', 'paymentDuesEnabled'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.addEventListener('input', () => {
+            if (!el) return;
+            const handler = () => {
+                // Keep the custom checkmark UI in sync immediately. The native
+                // checkbox is visually hidden, so the visible circle must be
+                // driven by its current checked state.
+                if (el.type === 'checkbox') {
+                    const visual = el.nextElementSibling;
+                    if (visual) visual.classList.toggle('is-checked', el.checked);
+                    el.setAttribute('aria-checked', String(el.checked));
+                }
                 Payments.updateTotal();
                 if (id === 'paymentDues' || id === 'paymentDuesEnabled') Payments.updateDuesConstraint(true);
-            });
+            };
+            el.addEventListener('input', handler);
+            if (el.type === 'checkbox') el.addEventListener('change', handler);
         });
         
-        const initialStatus = document.getElementById('paymentStatus')?.value || 'unpaid';
-        this.syncStatusChecks(initialStatus);
+        const initialStatus = document.getElementById('paymentStatus')?.value;
+        if (initialStatus) this.syncStatusChecks(initialStatus);
         this.updateDuesConstraint(false);
         this.updateTotal();
+        // Sync custom checkmark visuals on first render too.
+        document.querySelectorAll('#paymentForm .payment-dues-check input[type=checkbox]').forEach((check) => {
+            const visual = check.nextElementSibling;
+            if (visual) visual.classList.toggle('is-checked', check.checked);
+            check.setAttribute('aria-checked', String(check.checked));
+        });
         
         const tenantSelect = document.getElementById('paymentTenant');
         if (tenantSelect && tenantSelect.tagName === 'SELECT') {
@@ -722,8 +843,9 @@ const Payments = {
         // the app. Build it from the current edit fields so the receipt reflects
         // unsaved changes made in the editor.
         const totalPayment = fields.rent + fields.electricity + fields.gas + fields.dues;
-        const checkedTotal = fields.rent + (fields.electricityEnabled ? fields.electricity : 0) + (fields.gasEnabled ? fields.gas : 0) + (fields.duesEnabled ? fields.dues : 0);
-        const amountPaid = this.resolveAmountPaid(fields.status, totalPayment, fields.status === 'paid' ? checkedTotal : fields.amountPaid);
+        const editMode = !document.getElementById('paymentStatus');
+        const editState = this.deriveEditPaymentState(fields);
+        const amountPaid = editMode ? editState.received : this.resolveAmountPaid(fields.status, totalPayment, fields.status === 'paid' ? editState.received : fields.amountPaid);
         const receiptPayment = {
             ...payment,
             tenant_id: fields.tenantId,
@@ -735,7 +857,7 @@ const Payments = {
             previous_dues: fields.duesEnabled ? fields.dues : 0,
             total_payment: totalPayment,
             amount_paid: amountPaid,
-            status: fields.status,
+            status: editMode ? editState.status : fields.status,
             notes: fields.notes
         };
         const tenant = (App.state.tenants || []).find(t => t.id === fields.tenantId);
@@ -748,88 +870,45 @@ const Payments = {
     },
     async updatePayment() {
         if (this._isProcessing) return;
-        
         const submitBtn = document.getElementById('paymentSubmitBtn');
         const id = document.getElementById('paymentId').value;
         const fields = this.getFormFields();
-        const totalPayment = fields.rent + fields.electricity + fields.gas + fields.dues;
-        const checkedTotal = fields.rent + (fields.electricityEnabled ? fields.electricity : 0) + (fields.gasEnabled ? fields.gas : 0) + (fields.duesEnabled ? fields.dues : 0);
-        
-        if (!fields.tenantId) {
-            showNotification('Please select a tenant', 'error');
-            return;
-        }
-        if (fields.rent <= 0) {
-            showNotification('Rent must be greater than 0', 'error');
-            return;
-        }
-        if (fields.status === 'partial') {
-            if (!fields.amountPaid || fields.amountPaid <= 0) {
-                showNotification('Enter the amount received for a partial payment', 'error');
-                return;
-            }
-            if (fields.amountPaid >= totalPayment) {
-                showNotification('Amount received must be less than the total amount due for a partial payment', 'error');
-                return;
-            }
-        }
-        
-        const resolvedAmountPaid = this.resolveAmountPaid(fields.status, totalPayment, fields.status === 'paid' ? checkedTotal : fields.amountPaid);
-        
+        const editState = this.deriveEditPaymentState(fields);
+        const totalPayment = editState.total;
+        const received = editState.received;
+        const status = editState.status;
+        const remaining = Math.max(0, totalPayment - received);
+        const rentEnabled = fields.rentEnabled !== false;
+        if (!fields.tenantId) { showNotification('Please select a tenant', 'error'); return; }
+        if (fields.rent <= 0) { showNotification('Rent must be greater than 0', 'error'); return; }
+
         this._isProcessing = true;
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Updating...';
-        }
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Updating...'; }
         Components.showLoading('Updating payment...');
-        
+        const payload = {
+            tenantId: fields.tenantId, month: fields.month, year: fields.year, monthlyRent: fields.rent,
+            rentEnabled,
+            electricity: fields.electricity, electricityEnabled: fields.electricityEnabled,
+            gas: fields.gas, gasEnabled: fields.gasEnabled,
+            previousDues: fields.dues, previousDuesEnabled: fields.duesEnabled,
+            totalPayment, amountPaid: received, status, notes: fields.notes, customCharges: []
+        };
         try {
             if (isDemoMode()) {
                 updateDemoRecord('payments', id, {
-                    tenant_id: fields.tenantId,
-                    month: fields.month,
-                    year: fields.year,
-                    monthly_rent: fields.rent,
-                    electricity: fields.electricityEnabled ? fields.electricity : 0,
-                    gas: fields.gasEnabled ? fields.gas : 0,
-                    previous_dues: fields.duesEnabled ? fields.dues : 0,
-                    total_payment: totalPayment,
-                    amount_paid: resolvedAmountPaid,
-                    status: fields.status,
-                    notes: fields.notes
+                    tenant_id: payload.tenantId, month: payload.month, year: payload.year, monthly_rent: payload.monthlyRent,
+                    rent_enabled: payload.rentEnabled, electricity: payload.electricity, electricity_enabled: payload.electricityEnabled,
+                    gas: payload.gas, gas_enabled: payload.gasEnabled, previous_dues: payload.previousDues,
+                    previous_dues_enabled: payload.previousDuesEnabled, total_payment: totalPayment, amount_paid: received,
+                    status, notes: fields.notes
                 });
-                await App.loadData();
-                App.closeModal();
-                await this.render();
-                if (document.getElementById('tenants')?.classList.contains('active')) {
-                    await Tenants.render();
-                }
-                Components.hideLoading();
-                showNotification('Payment updated successfully', 'success');
-                return;
+            } else {
+                await API.updatePayment(id, payload);
             }
-
-            await API.updatePayment(id, {
-                tenantId: fields.tenantId,
-                month: fields.month,
-                year: fields.year,
-                monthlyRent: fields.rent,
-                electricity: fields.electricityEnabled ? fields.electricity : 0,
-                gas: fields.gasEnabled ? fields.gas : 0,
-                previousDues: fields.duesEnabled ? fields.dues : 0,
-                totalPayment,
-                amountPaid: resolvedAmountPaid,
-                status: fields.status,
-                notes: fields.notes,
-                customCharges: []
-            });
-            
             await App.loadData();
             App.closeModal();
             await this.render();
-            if (document.getElementById('tenants')?.classList.contains('active')) {
-                await Tenants.render();
-            }
+            if (document.getElementById('tenants')?.classList.contains('active')) await Tenants.render();
             Components.hideLoading();
             showNotification('Payment updated successfully', 'success');
         } catch (error) {
@@ -837,10 +916,7 @@ const Payments = {
             showNotification(error.message || 'Failed to update payment', 'error');
         } finally {
             this._isProcessing = false;
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Update Payment';
-            }
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Update Payment'; }
         }
     },
     

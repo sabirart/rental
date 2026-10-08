@@ -24,12 +24,12 @@ const API = {
 
     // Get auth token from localStorage
     getAuthToken() {
-        return localStorage.getItem('auth_token');
+        return null;
     },
 
     // Check if user is authenticated
     isAuthenticated() {
-        return !!this.getAuthToken();
+        return window.Auth?.isAuthenticated === true;
     },
 
     // Guards against the 3 parallel loadData() calls (getTenants/getProperties/
@@ -45,23 +45,27 @@ const API = {
             method,
             headers: {
                 'Content-Type': 'application/json',
-            }
+            },
+            credentials: 'include'
         };
 
         // IMPORTANT: Always attach the auth token to every request
-        const token = this.getAuthToken();
-        if (token) {
-            options.headers['Authorization'] = `Bearer ${token}`;
-        } else {
-            console.warn('No auth token found for request:', endpoint);
-            // If no token and not a public endpoint, redirect to login
-            if (!endpoint.includes('/auth/') && !endpoint.includes('/health')) {
-                throw new Error('Authentication required. Please login.');
-            }
+        const authenticated = window.Auth?.isAuthenticated === true;
+        if (!authenticated && !endpoint.includes('/auth/') && !endpoint.includes('/health')) {
+            throw new Error('Authentication required. Please login.');
         }
 
         if (data) {
             options.body = JSON.stringify(data);
+        }
+
+        // Google Drive access tokens are short-lived. Refresh silently before
+        // every protected application-data request so a page left open or
+        // reloaded later does not look authenticated while its Drive token
+        // has already expired. The refresh function is a no-op until Google
+        // Identity Services is available/consented.
+        if (authenticated && !endpoint.startsWith('/auth/') && !endpoint.startsWith('/health')) {
+            try { await window.refreshGoogleDriveAccess?.(); } catch (_) {}
         }
 
         let lastError = null;
@@ -204,7 +208,7 @@ const API = {
         box.innerHTML = `
             <div class="session-expired-box">
                 <h3>Session expired</h3>
-                <p>Your session has expired. Your data is still saved locally - refresh to try again, or log in to keep saving changes.</p>
+                <p>Your session has expired. Your data is saved in your Google Drive - refresh to reconnect, or sign in with Google again.</p>
                 <div class="session-expired-actions">
                     <button type="button" class="session-refresh-btn">Refresh</button>
                     <button type="button" class="session-login-btn">Login</button>

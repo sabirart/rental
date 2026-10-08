@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { errorHandler } = require('./middleware/errorHandler');
+const database = require('./config/database');
 
 // Import routes
 const tenantRoutes = require('./routes/tenants');
@@ -60,7 +61,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
             fontSrc: ["'self'", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "blob:"],
-            connectSrc: ["'self'", "https://accounts.google.com"],
+            connectSrc: ["'self'", "https://accounts.google.com", "https://www.googleapis.com"],
             frameSrc: ["https://accounts.google.com"],
             objectSrc: ["'none'"],
             baseUri: ["'self'"]
@@ -79,15 +80,33 @@ app.use(helmet({
 // the browser with no clear error. This app authenticates with a Bearer
 // token in the Authorization header, not cookies, so there's no CSRF/
 // credentialed-cookie risk from opening this back up.
-app.use(cors({
-    origin: '*',
+const configuredOrigins = [
+    process.env.CORS_ORIGINS,
+    process.env.CORS_ORIGIN,
+    process.env.ALLOWED_ORIGINS
+].filter(Boolean).flatMap(value => value.split(','))
+    .map(value => value.trim())
+    .filter(Boolean);
+if (process.env.NODE_ENV !== 'production') {
+    ['http://localhost:5000','http://localhost:5001','http://127.0.0.1:5000','http://127.0.0.1:5001'].forEach(origin => {
+        if (!configuredOrigins.includes(origin)) configuredOrigins.push(origin);
+    });
+}
+
+const corsOptions = {
+    origin(origin, callback) {
+        // Same-origin requests and non-browser clients have no Origin header.
+        if (!origin) return callback(null, true);
+        if (configuredOrigins.includes(origin)) return callback(null, true);
+        return callback(new Error('CORS origin not allowed'));
+    },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
     optionsSuccessStatus: 200
-}));
-
-// Handle preflight requests
-app.options('*', cors());
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Rate limiting on auth endpoints - login/register/OTP/password-reset are
 // the classic brute-force and email-bombing targets, so they still get a
@@ -184,21 +203,33 @@ app.use('/api/*', (req, res) => {
 // Error handling middleware
 app.use(errorHandler);
 
-// Start server
-const server = app.listen(PORT, () => {
-    console.log('='.repeat(50));
-    console.log('Rental Management API Server');
-    console.log('='.repeat(50));
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Health check: http://localhost:${PORT}/api/health`);
-    console.log(`Frontend: http://localhost:${PORT}/`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log('='.repeat(50));
-});
+// Start server only after the database schema is confirmed ready.
+let server;
+async function startServer() {
+    try {
+        await database.ready;
+    } catch (error) {
+        console.error('Server startup aborted: database initialization failed.');
+        process.exitCode = 1;
+        return;
+    }
+    server = app.listen(PORT, () => {
+        console.log('='.repeat(50));
+        console.log('Rental Management API Server');
+        console.log('='.repeat(50));
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Health check: http://localhost:${PORT}/api/health`);
+        console.log(`Frontend: http://localhost:${PORT}/`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log('='.repeat(50));
+    });
+}
+startServer();
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM signal received: closing HTTP server');
+    if (!server) return process.exit(0);
     server.close(() => {
         console.log('HTTP server closed');
         process.exit(0);
@@ -207,6 +238,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
     console.log('SIGINT signal received: closing HTTP server');
+    if (!server) return process.exit(0);
     server.close(() => {
         console.log('HTTP server closed');
         process.exit(0);
@@ -215,6 +247,7 @@ process.on('SIGINT', () => {
 
 process.on('unhandledRejection', (err) => {
     console.error('UNHANDLED REJECTION:', err);
+    if (!server) return process.exit(1);
     server.close(() => {
         process.exit(1);
     });
@@ -222,6 +255,7 @@ process.on('unhandledRejection', (err) => {
 
 process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION:', err);
+    if (!server) return process.exit(1);
     server.close(() => {
         process.exit(1);
     });

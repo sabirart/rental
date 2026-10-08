@@ -259,6 +259,28 @@
 //  - Browser (web): Google Identity Services popup (unchanged), returns an access token.
 // Both paths end up calling Auth.googleLogin(), which sends whichever token type
 // it received to the same backend endpoint.
+async function refreshGoogleDriveAccess() {
+    if (typeof google === 'undefined' || !google.accounts?.oauth2) return;
+    return new Promise((resolve) => {
+        try {
+            const client = google.accounts.oauth2.initTokenClient({
+                client_id: '662426431112-p5fh467egk9h20cqpqtl5eve2kre7fkk.apps.googleusercontent.com',
+                scope: 'email profile https://www.googleapis.com/auth/drive.file',
+                prompt: '',
+                callback: async (response) => {
+                    if (response?.access_token) {
+                        try { await Auth.setGoogleDriveToken(response.access_token); } catch (_) {}
+                    }
+                    resolve();
+                }
+            });
+            client.requestAccessToken();
+        } catch (_) { resolve(); }
+    });
+}
+
+window.refreshGoogleDriveAccess = refreshGoogleDriveAccess;
+
 async function handleGoogleLogin() {
     if (window.NativeAuth && window.NativeAuth.isNative()) {
         try {
@@ -292,7 +314,7 @@ async function handleGoogleLogin() {
             // FIX: was a different Client ID than backend's .env GOOGLE_CLIENT_ID —
             // they must match, since Google validates the requesting origin per client ID.
             client_id: '662426431112-p5fh467egk9h20cqpqtl5eve2kre7fkk.apps.googleusercontent.com',
-            scope: 'email profile',
+            scope: 'email profile https://www.googleapis.com/auth/drive.file',
             callback: async (response) => {
                 if (response.error) {
                     Components.showError('Google Sign-In Failed', response.error || 'Google sign-in failed. Please try again.');

@@ -71,6 +71,11 @@ const Tenants = {
             const gas = latestPayment ? (latestPayment.gas || 0) : 0;
             const previousDues = latestPayment ? (latestPayment.previous_dues || 0) : 0;
             const totalWithoutDues = monthlyRent + electricity + gas;
+            const rentPaid = latestPayment ? latestPayment.rent_enabled !== false : false;
+            const electricityPaid = latestPayment ? latestPayment.electricity_enabled !== false : false;
+            const gasPaid = latestPayment ? latestPayment.gas_enabled !== false : false;
+            const duesPaid = latestPayment ? latestPayment.previous_dues_enabled !== false : false;
+            const componentUnpaidStyle = (enabled, amount) => (!enabled && Number(amount || 0) > 0) ? 'color:#ff8c00;font-weight:600;' : '';
 
             const profilePic = tenant.profile_pic 
                 ? `<img src="${escapeHTML(tenant.profile_pic)}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">`
@@ -87,9 +92,9 @@ const Tenants = {
                     </td>
                     <td>${roomDisplay}</td>
                     <td>${formatCurrency(monthlyRent)}</td>
-                    <td>${formatCurrency(electricity)}</td>
-                    <td>${formatCurrency(gas)}</td>
-                    <td style="color: ${(latestPayment && (latestPayment.status === 'unpaid' || latestPayment.status === 'partial') && previousDues > 0) ? '#ff8c00' : 'inherit'}; font-weight: ${(latestPayment && (latestPayment.status === 'unpaid' || latestPayment.status === 'partial') && previousDues > 0) ? '600' : 'normal'};">${formatCurrency(previousDues)}</td>
+                    <td style="${componentUnpaidStyle(electricityPaid, electricity)}">${formatCurrency(electricity)}</td>
+                    <td style="${componentUnpaidStyle(gasPaid, gas)}">${formatCurrency(gas)}</td>
+                    <td style="${componentUnpaidStyle(duesPaid, previousDues)}">${formatCurrency(previousDues)}</td>
                     <td>
                         ${latestPayment 
                             ? (latestPayment.status === 'unpaid' 

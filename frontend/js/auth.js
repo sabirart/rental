@@ -6,12 +6,11 @@ const Auth = {
     _listeners: [],
     
     init() {
-        const token = localStorage.getItem('auth_token');
         const userStr = localStorage.getItem('auth_user');
         
-        if (token && userStr) {
+        if (userStr) {
             try {
-                this._token = token;
+                this._token = null;
                 this._user = JSON.parse(userStr);
                 return true;
             } catch (e) {
@@ -24,13 +23,12 @@ const Auth = {
     
     get token() { return this._token; },
     get user() { return this._user; },
-    get isAuthenticated() { return !!this._token && !!this._user; },
+    get isAuthenticated() { return !!this._user; },
     
     setUser(user, token) {
         this._token = token;
         this._user = user;
-        if (token && user) {
-            localStorage.setItem('auth_token', token);
+        if (user) {
             localStorage.setItem('auth_user', JSON.stringify(user));
         }
         this._notifyListeners();
@@ -39,7 +37,6 @@ const Auth = {
     clear() {
         this._token = null;
         this._user = null;
-        localStorage.removeItem('auth_token');
         localStorage.removeItem('auth_user');
         this._notifyListeners();
     },
@@ -61,6 +58,7 @@ const Auth = {
     async register(name, email, password) {
         const response = await fetch(`${API.baseURL}/auth/register`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, email, password })
         });
@@ -72,6 +70,7 @@ const Auth = {
     async verifyEmail(email, otp) {
         const response = await fetch(`${API.baseURL}/auth/verify-email`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, otp })
         });
@@ -84,6 +83,7 @@ const Auth = {
     async resendVerification(email) {
         const response = await fetch(`${API.baseURL}/auth/resend-verification`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
         });
@@ -95,6 +95,7 @@ const Auth = {
     async login(email, password) {
         const response = await fetch(`${API.baseURL}/auth/login`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         });
@@ -114,6 +115,7 @@ const Auth = {
     async googleLogin({ accessToken, idToken } = {}) {
         const response = await fetch(`${API.baseURL}/auth/google-login`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(idToken ? { idToken } : { token: accessToken })
         });
@@ -123,9 +125,23 @@ const Auth = {
         return data.data;
     },
     
+
+    async setGoogleDriveToken(accessToken) {
+        const response = await fetch(`${API.baseURL}/auth/google-drive-token`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: accessToken })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || data.message || 'Google Drive connection failed');
+        return data.data;
+    },
+
     async forgotPassword(email) {
         const response = await fetch(`${API.baseURL}/auth/forgot-password`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
         });
@@ -137,6 +153,7 @@ const Auth = {
     async resetPassword(email, otp, newPassword) {
         const response = await fetch(`${API.baseURL}/auth/reset-password`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, otp, newPassword })
         });
@@ -147,7 +164,7 @@ const Auth = {
     
     async fetchMe() {
         const response = await fetch(`${API.baseURL}/auth/me`, {
-            headers: { 'Authorization': `Bearer ${this._token}` }
+            credentials: 'include'
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || data.message || 'Failed to load account');
@@ -158,9 +175,9 @@ const Auth = {
     async updateProfile(profileData) {
         const response = await fetch(`${API.baseURL}/auth/profile`, {
             method: 'PUT',
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this._token}`
             },
             body: JSON.stringify(profileData)
         });
@@ -185,9 +202,9 @@ const Auth = {
         
         const response = await fetch(`${API.baseURL}/auth/change-password`, {
             method: 'POST',
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this._token}`
             },
             body: JSON.stringify(payload)
         });
@@ -205,9 +222,9 @@ const Auth = {
     async deleteAccount(password) {
         const response = await fetch(`${API.baseURL}/auth/account`, {
             method: 'DELETE',
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this._token}`
             },
             body: JSON.stringify({ password })
         });
@@ -218,14 +235,12 @@ const Auth = {
     },
 
     async logout() {
-        if (this._token) {
-            try {
-                await fetch(`${API.baseURL}/auth/logout`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${this._token}` }
-                });
-            } catch (e) {}
-        }
+        try {
+            await fetch(`${API.baseURL}/auth/logout`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+        } catch (e) {}
         this.clear();
         window.location.reload();
     },

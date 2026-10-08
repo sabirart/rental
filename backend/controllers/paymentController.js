@@ -37,7 +37,7 @@ const paymentController = {
             if (!tenant) throw new AppError('Tenant not found', 404);
             if (!data.month || data.month < 1 || data.month > 12) throw new AppError('Month must be between 1 and 12', 400);
             if (!data.year || data.year < 2000 || data.year > 2100) throw new AppError('Year must be between 2000 and 2100', 400);
-            if (!data.monthlyRent || data.monthlyRent < 0) throw new AppError('Monthly rent must be a positive number', 400);
+            if (data.monthlyRent === undefined || data.monthlyRent === null || Number(data.monthlyRent) < 0) throw new AppError('Monthly rent must be a non-negative number', 400);
             
             const existing = await Payment.findAll(req.userId, { tenantId: data.tenantId, month: data.month, year: data.year });
             if (existing.length > 0) throw new AppError('Payment already exists for this tenant for this month/year', 400);
@@ -81,7 +81,7 @@ const paymentController = {
             if (!tenant) throw new AppError('Tenant not found', 404);
             if (!data.month || data.month < 1 || data.month > 12) throw new AppError('Month must be between 1 and 12', 400);
             if (!data.year || data.year < 2000 || data.year > 2100) throw new AppError('Year must be between 2000 and 2100', 400);
-            if (!data.monthlyRent || data.monthlyRent < 0) throw new AppError('Monthly rent must be a positive number', 400);
+            if (data.monthlyRent === undefined || data.monthlyRent === null || Number(data.monthlyRent) < 0) throw new AppError('Monthly rent must be a non-negative number', 400);
             
             const duplicates = await Payment.findAll(req.userId, { tenantId: data.tenantId, month: data.month, year: data.year });
             if (duplicates.some(p => p.id !== id)) throw new AppError('Payment already exists for this tenant for this month/year', 400);

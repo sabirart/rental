@@ -225,6 +225,15 @@ const Settings = {
         if (!authSection) {
             this.injectAccountCard();
         }
+
+        // Keep the Settings Account card in sync with login/logout changes.
+        // The topbar has its own listeners; these listeners are only for the
+        // dynamically rendered Settings Account card.
+        if (!this._authSettingsListenerBound && typeof Auth !== 'undefined' && typeof Auth.addListener === 'function') {
+            this._authSettingsListenerBound = true;
+            Auth.addListener(() => this.updateAccountCard());
+        }
+
         this.updateAccountCard();
     },
 
@@ -274,8 +283,8 @@ const Settings = {
                         <div style="color: var(--text-light); font-size: 0.85rem;">${user.email || ''}</div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button class="btn btn-sm btn-outline" onclick="DashboardAuthBar.showProfile()">Manage Account</button>
-                        <button class="btn btn-sm btn-danger" onclick="Auth.logout()">Logout</button>
+                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="manage">Manage Account</button>
+                        <button type="button" class="btn btn-sm btn-danger" data-settings-account-action="logout">Logout</button>
                     </div>
                 </div>
             `;
@@ -287,11 +296,41 @@ const Settings = {
                         <div style="color: var(--text-light); font-size: 0.85rem;">Create an account to save your data permanently</div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button class="btn btn-sm btn-primary" onclick="DashboardAuthBar.showLogin()">Login</button>
-                        <button class="btn btn-sm btn-outline" onclick="DashboardAuthBar.showRegister()">Sign Up</button>
+                        <button type="button" class="btn btn-sm btn-primary" data-settings-account-action="login">Login</button>
+                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="signup">Sign Up</button>
                     </div>
                 </div>
             `;
+        }
+
+        // The Account card is rendered dynamically, so wire its buttons after
+        // every render. This intentionally does not touch the topbar auth UI.
+        const accountBody = document.getElementById('accountCardBody');
+        if (accountBody) {
+            accountBody.querySelectorAll('[data-settings-account-action]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const action = button.dataset.settingsAccountAction;
+                    try {
+                        if (action === 'login') {
+                            SiteController.openAuthModal('login');
+                        } else if (action === 'signup') {
+                            SiteController.openAuthModal('register');
+                        } else if (action === 'manage') {
+                            if (typeof ManageAccount !== 'undefined') {
+                                ManageAccount.open();
+                            } else {
+                                SiteController.openAuthModal('manageAccount');
+                            }
+                        } else if (action === 'logout') {
+                            button.disabled = true;
+                            await Auth.logout();
+                        }
+                    } catch (error) {
+                        button.disabled = false;
+                        showNotification(error.message || 'Unable to complete account action', 'error');
+                    }
+                });
+            });
         }
     },
 

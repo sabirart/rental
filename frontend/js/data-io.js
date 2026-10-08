@@ -239,12 +239,16 @@ const DataIO = {
     },
 
     generateReceipt(payment, tenant) {
-        const win = window.open('', '_blank', 'width=480,height=640');
+        const win = window.open('', '_blank', 'width=380,height=560');
         if (!win) {
             Components.showWarning('Please allow pop-ups to generate the receipt.');
             return;
         }
         const owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
+        const tenantName = tenant ? tenant.name : 'N/A';
+        const property = tenant ? (App.state.properties || []).find(p => p.id === tenant.property_id) : null;
+        const room = tenant?.room_number ?? tenant?.room?.room_number ?? '';
+        const house = property?.name || tenant?.property_name || '';
         const rows = [
             ['Rent', payment.monthly_rent],
             ['Electricity', payment.electricity],
@@ -257,26 +261,40 @@ const DataIO = {
             : payment.status === 'unpaid' ? 0
             : (payment.amount_paid || 0);
         const remaining = Math.max(0, (payment.total_payment || 0) - amountPaid);
+        const tenantMeta = [house, room ? `Room ${room}` : ''].filter(Boolean).join(' · ');
 
         win.document.write(`
             <html>
             <head>
                 <title>Payment Receipt</title>
                 <style>
-                    body { font-family: -apple-system, Arial, sans-serif; padding: 32px; color: #1c1c1c; }
-                    h1 { font-size: 1.2rem; margin-bottom: 0; }
-                    .sub { color: #6b6b6b; font-size: 0.85rem; margin-top: 4px; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                    td { padding: 8px 0; border-bottom: 1px solid #eee; font-size: 0.9rem; }
-                    td:last-child { text-align: right; }
-                    .total-row td { font-weight: 700; border-top: 2px solid #1a1a1a; border-bottom: none; padding-top: 12px; }
-                    .status { display:inline-block; margin-top:16px; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+                    @page { size: 80mm auto; margin: 5mm; }
+                    * { box-sizing: border-box; }
+                    body { width: 70mm; margin: 0; padding: 5mm 2mm; font-family: Arial, sans-serif; color: #1c1c1c; font-size: 11px; text-align: left; }
+                    .center { text-align: left; }
+                    .brand { font-size: 16px; font-weight: 700; margin: 0; }
+                    .title { font-size: 11px; margin: 3px 0 8px; color: #555; }
+                    .rule { border-top: 1px solid #222; margin: 7px 0 9px; }
+                    .tenant-name { font-size: 13px; font-weight: 700; margin: 0; }
+                    .tenant-meta { font-size: 9px; color: #666; margin: 3px 0 8px; }
+                    .date { font-size: 9px; color: #666; text-align: right; margin-bottom: 5px; }
+                    table { width: 100%; border-collapse: collapse; }
+                    td { padding: 4px 0; font-size: 10px; border-bottom: 1px dotted #ccc; }
+                    td:last-child { text-align: right; font-weight: 600; }
+                    .total-row td { border-top: 1px solid #222; border-bottom: 0; padding-top: 7px; font-size: 12px; font-weight: 700; }
+                    .status { text-align: center; margin: 10px 0 2px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+                    .footer { text-align: center; font-size: 8px; color: #777; margin-top: 10px; }
                 </style>
             </head>
             <body onload="window.print()">
-                <h1>${escapeHTML(owner.name || 'Rental Manager')}</h1>
-                <p class="sub">Payment Receipt · ${monthName(payment.month)} ${payment.year}</p>
-                <p class="sub">Tenant: ${escapeHTML(tenant ? tenant.name : 'N/A')}</p>
+                <div class="center">
+                    <p class="brand">${escapeHTML(owner.name || 'Rental Manager')}</p>
+                    <p class="title">Payment Receipt · ${monthName(payment.month)} ${payment.year}</p>
+                </div>
+                <div class="rule"></div>
+                <p class="tenant-name">${escapeHTML(tenantName)}</p>
+                ${tenantMeta ? `<p class="tenant-meta">${escapeHTML(tenantMeta)}</p>` : ''}
+                <div class="date">${new Date().toLocaleDateString()}</div>
                 <table>
                     ${rows.map(([label, amt]) => `<tr><td>${escapeHTML(String(label))}</td><td>${formatCurrency(amt || 0)}</td></tr>`).join('')}
                     <tr class="total-row"><td>Total</td><td>${formatCurrency(payment.total_payment || 0)}</td></tr>
@@ -285,7 +303,8 @@ const DataIO = {
                     <tr><td>Remaining Balance</td><td>${formatCurrency(remaining)}</td></tr>
                     ` : ''}
                 </table>
-                <span class="status">${escapeHTML(payment.status || 'unpaid')}</span>
+                <div class="status">${escapeHTML(payment.status || 'unpaid')}</div>
+                <div class="footer">Thank you</div>
             </body>
             </html>
         `);

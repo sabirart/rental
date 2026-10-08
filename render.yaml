@@ -15,17 +15,13 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: EMAIL_USER
+      - key: JWT_SECRET
         sync: false
-      - key: EMAIL_PASS
+      - key: CORS_ORIGINS
         sync: false
-      # Paste your Postgres provider's connection string here in the Render
-      # dashboard (e.g. from Supabase: Project Settings -> Database ->
-      # Connection string). No disk needed - the database is external.
-      - key: DATABASE_URL
+      - key: ALLOWED_ORIGINS
         sync: false
-      - key: DATABASE_IPV4
-        value: 'true'
-      # IMPORTANT: Render web services are IPv4-only. DATABASE_URL must use
-      # an IPv4-compatible Postgres endpoint (for Supabase, use Connect ->
-      # Session pooler, port 5432), not the direct db.* IPv6 endpoint.
+      # Optional one-time import only. The running application never uses
+      # this database for Rental Manager data after migration.
+      - key: LEGACY_DATABASE_URL
+        sync: false
