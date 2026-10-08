@@ -1,0 +1,758 @@
+// js/payments.js - Professional Version with Loading Indicators
+
+const Payments = {
+    _isProcessing: false,
+
+    async render() {
+        this.populateYearFilter();
+        await this.renderPayments();
+        this.setupEventListeners();
+    },
+    
+    populateYearFilter() {
+        const yearSelect = document.getElementById('paymentYearFilter');
+        const currentYear = getCurrentYear();
+        yearSelect.innerHTML = '<option value="all">All Years</option>';
+        for (let year = currentYear; year >= currentYear - 4; year--) {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearSelect.appendChild(option);
+        }
+    },
+    
+    async renderPayments() {
+        const tbody = document.getElementById('paymentsList');
+        const { payments, tenants, properties } = App.state;
+        
+        const monthFilter = document.getElementById('paymentMonthFilter').value;
+        const yearFilter = document.getElementById('paymentYearFilter').value;
+        
+        let filteredPayments = payments.filter(p => {
+            const matchMonth = monthFilter === 'all' || p.month === parseInt(monthFilter);
+            const matchYear = yearFilter === 'all' || p.year === parseInt(yearFilter);
+            return matchMonth && matchYear;
+        });
+        
+        filteredPayments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        
+        if (!filteredPayments.length) {
+            tbody.innerHTML = `<tr><td colspan="11" class="empty-state">No payments recorded yet</td></tr>`;
+            return;
+        }
+        
+        let html = '';
+        filteredPayments.forEach(payment => {
+            const tenant = tenants.find(t => t.id === payment.tenant_id);
+            const tenantName = tenant ? escapeHTML(tenant.name) : 'Unknown Tenant';
+            const property = tenant ? properties.find(p => p.id === tenant.property_id) : null;
+            const roomInfo = tenant && property ? `Room ${escapeHTML(String(tenant.room_number))}` : 'N/A';
+            
+            const statusMap = { paid: 'success', partial: 'warning', unpaid: 'danger' };
+            const statusBadge = `<span class="badge badge-${statusMap[payment.status] || 'danger'}">${escapeHTML(payment.status)}</span>`;
+            const remainingNote = payment.status === 'partial'
+                ? `<div style="font-size: 0.75rem; color: var(--text-light); margin-top: 2px;">Received ${formatCurrency(payment.amount_paid || 0)} &middot; Owes ${formatCurrency(Math.max(0, (payment.total_payment || 0) - (payment.amount_paid || 0)))}</div>`
+                : '';
+            
+            const total = (payment.monthly_rent || 0) + (payment.electricity || 0) + (payment.gas || 0) + (payment.previous_dues || 0);
+            
+            html += `
+                <tr>
+                    <td><strong>${tenantName}</strong></td>
+                    <td>${roomInfo}</td>
+                    <td>${escapeHTML(getMonthName(payment.month))}</td>
+                    <td>${escapeHTML(String(payment.year))}</td>
+                    <td>${formatCurrency(payment.monthly_rent)}</td>
+                    <td>${formatCurrency(payment.electricity || 0)}</td>
+                    <td>${formatCurrency(payment.gas || 0)}</td>
+                    <td>${formatCurrency(payment.previous_dues || 0)}</td>
+                    <td><strong>${formatCurrency(total)}</strong></td>
+                    <td>${statusBadge}${remainingNote}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="action-btn edit" data-id="${escapeHTML(payment.id)}">Edit</button>
+                            <button class="action-btn delete" data-id="${escapeHTML(payment.id)}">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        tbody.innerHTML = html;
+        
+        tbody.querySelectorAll('.edit').forEach(btn => btn.addEventListener('click', () => this.editPayment(btn.dataset.id)));
+        tbody.querySelectorAll('.delete').forEach(btn => btn.addEventListener('click', () => this.deletePayment(btn.dataset.id)));
+    },
+    
+    setupEventListeners() {
+        document.getElementById('addPaymentBtn').addEventListener('click', () => this.showAddForm());
+        document.getElementById('paymentMonthFilter').addEventListener('change', () => this.renderPayments());
+        document.getElementById('paymentYearFilter').addEventListener('change', () => this.renderPayments());
+    },
+    
+    getFormFields() {
+        return {
+            tenantId: document.getElementById('paymentTenant')?.value,
+            month: parseInt(document.getElementById('paymentMonth')?.value),
+            year: parseInt(document.getElementById('paymentYear')?.value),
+            rent: parseFloat(document.getElementById('paymentRent')?.value) || 0,
+            electricity: parseFloat(document.getElementById('paymentElectricity')?.value) || 0,
+            gas: parseFloat(document.getElementById('paymentGas')?.value) || 0,
+            dues: parseFloat(document.getElementById('paymentDues')?.value) || 0,
+            status: document.getElementById('paymentStatus')?.value || 'unpaid',
+            amountPaid: parseFloat(document.getElementById('paymentAmountPaid')?.value) || 0,
+            notes: document.getElementById('paymentNotes')?.value.trim() || ''
+        };
+    },
+
+    // Works out the amount actually received given the current status: a
+    // 'paid' record always means the full total was received, 'unpaid'
+    // always means nothing was received, and only 'partial' uses whatever
+    // the user typed into the Amount Received field. Mirrors
+    // Payment._resolveAmountPaid on the backend so the UI and the server
+    // never disagree about what a given status implies.
+    resolveAmountPaid(status, total, amountPaidRaw) {
+        if (status === 'paid') return total;
+        if (status === 'unpaid') return 0;
+        return amountPaidRaw || 0;
+    },
+    
+    updateTotal() {
+        const { rent, electricity, gas, dues, status, amountPaid } = this.getFormFields();
+        const withoutDue = rent + electricity + gas;
+        const totalWithDue = withoutDue + dues;
+        
+        const withoutDueDisplay = document.getElementById('paymentWithoutDueDisplay');
+        const totalDisplay = document.getElementById('paymentTotalDisplay');
+        
+        if (withoutDueDisplay) withoutDueDisplay.textContent = formatCurrency(withoutDue);
+        if (totalDisplay) totalDisplay.textContent = formatCurrency(totalWithDue);
+        
+        this.syncAmountPaidUI(totalWithDue, status, amountPaid);
+    },
+
+    // Shows/hides the "Amount Received" input (only meaningful for a
+    // partial payment) and keeps the always-visible "Amount Received" /
+    // "Remaining Balance" summary in sync with the current status + amount.
+    syncAmountPaidUI(total, status, amountPaidRaw) {
+        const amountPaidGroup = document.getElementById('amountPaidGroup');
+        const amountPaidInput = document.getElementById('paymentAmountPaid');
+        const paidDisplay = document.getElementById('paymentPaidDisplay');
+        const remainingDisplay = document.getElementById('paymentRemainingDisplay');
+
+        if (amountPaidGroup) amountPaidGroup.style.display = status === 'partial' ? 'block' : 'none';
+
+        const resolvedPaid = this.resolveAmountPaid(status, total, amountPaidRaw);
+        const remaining = Math.max(0, total - resolvedPaid);
+
+        if (paidDisplay) paidDisplay.textContent = formatCurrency(resolvedPaid);
+        if (remainingDisplay) remainingDisplay.textContent = formatCurrency(remaining);
+
+        if (amountPaidInput && status === 'partial') {
+            // Keep the field's declared max in sync with the current total
+            // so the browser's own number-input validation matches the
+            // server rule (amount received must be less than the total due).
+            amountPaidInput.max = total > 0 ? Math.max(total - 0.01, 0).toFixed(2) : 0;
+        }
+    },
+    
+    getStatusHTML(selected = 'unpaid') {
+        if (!selected) selected = 'unpaid';
+        const statuses = [
+            { value: 'paid', label: 'Paid', class: 'status-btn-paid' },
+            { value: 'partial', label: 'Partial', class: 'status-btn-partial' },
+            { value: 'unpaid', label: 'Unpaid', class: 'status-btn-unpaid' }
+        ];
+        
+        return statuses.map(s => 
+            `<button type="button" class="status-btn ${s.class} ${selected === s.value ? 'active' : ''}" data-status="${s.value}">${s.label}</button>`
+        ).join('');
+    },
+    
+    updateDuesConstraint(userTriggered = false) {
+        const duesEl = document.getElementById('paymentDues');
+        const statusInput = document.getElementById('paymentStatus');
+        const paidBtn = document.querySelector('.status-btn[data-status="paid"]');
+        const partialBtn = document.querySelector('.status-btn[data-status="partial"]');
+        const unpaidBtn = document.querySelector('.status-btn[data-status="unpaid"]');
+        if (!duesEl || !statusInput || !paidBtn || !partialBtn) return;
+        
+        const dues = parseFloat(duesEl.value) || 0;
+        
+        if (dues > 0) {
+            paidBtn.disabled = true;
+            paidBtn.classList.add('status-btn-disabled');
+            partialBtn.disabled = false;
+            partialBtn.classList.remove('status-btn-disabled');
+            if (userTriggered && statusInput.value === 'paid') {
+                document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+                partialBtn.classList.add('active');
+                statusInput.value = 'partial';
+            }
+        } else {
+            paidBtn.disabled = false;
+            paidBtn.classList.remove('status-btn-disabled');
+            partialBtn.disabled = true;
+            partialBtn.classList.add('status-btn-disabled');
+            if (userTriggered && statusInput.value === 'partial') {
+                document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+                if (unpaidBtn) unpaidBtn.classList.add('active');
+                statusInput.value = 'unpaid';
+            }
+        }
+    },
+    
+    getTotalHTML(withoutDue = 0, totalWithDue = 0, amountPaid = 0, status = 'unpaid') {
+        const resolvedPaid = this.resolveAmountPaid(status, totalWithDue, amountPaid);
+        const remaining = Math.max(0, totalWithDue - resolvedPaid);
+        return `
+            <div style="background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div><strong>Without Due:</strong> <span id="paymentWithoutDueDisplay" style="font-weight: 600; margin-left: 4px;">${formatCurrency(withoutDue)}</span></div>
+                    <div><strong>Total +Due:</strong> <span id="paymentTotalDisplay" style="font-weight: 600; margin-left: 4px;">${formatCurrency(totalWithDue)}</span></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border-light); padding-top: 8px;">
+                    <div><strong>Amount Received:</strong> <span id="paymentPaidDisplay" style="font-weight: 600; margin-left: 4px; color: #155724;">${formatCurrency(resolvedPaid)}</span></div>
+                    <div><strong>Remaining Balance:</strong> <span id="paymentRemainingDisplay" style="font-weight: 600; margin-left: 4px; color: #721c24;">${formatCurrency(remaining)}</span></div>
+                </div>
+            </div>
+        `;
+    },
+    
+    toggleNotes() {
+        const container = document.getElementById('notesContainer');
+        const icon = document.getElementById('notesToggleIcon');
+        if (container) {
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                if (icon) icon.textContent = '▼';
+            } else {
+                container.style.display = 'none';
+                if (icon) icon.textContent = '▶';
+            }
+        }
+    },
+
+    showAddForm() {
+        const tenants = App.state.tenants.filter(t => t.status === 'active' && t.property_id);
+        
+        if (!tenants.length) {
+            showNotification('No active tenants found. Please add a tenant first.', 'warning');
+            return;
+        }
+        
+        let tenantOptions = '<option value="">Select Tenant</option>';
+        tenants.forEach(t => {
+            const property = App.state.properties.find(p => p.id === t.property_id);
+            tenantOptions += `<option value="${escapeHTML(t.id)}" data-rent="${property ? property.base_rent : 0}">${escapeHTML(t.name)} - ${property ? escapeHTML(property.name) : 'No Property'}</option>`;
+        });
+        
+        const currentMonth = getCurrentMonth();
+        const currentYear = getCurrentYear();
+        
+        const form = `
+            <form id="paymentForm">
+                <div class="form-group">
+                    <label>Tenant <span class="required">*</span></label>
+                    <select class="form-control" id="paymentTenant" required>${tenantOptions}</select>
+                </div>
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label>Month <span class="required">*</span></label>
+                    <select class="form-control" id="paymentMonth" required>${this.getMonthOptions(currentMonth)}</select>
+                </div>
+                <div class="form-group">
+                    <label>Year <span class="required">*</span></label>
+                    <select class="form-control" id="paymentYear" required>${this.getYearOptions(currentYear)}</select>
+                </div>
+                <div class="form-group">
+                    <label>Rent <span class="required">*</span></label>
+                    <input type="number" class="form-control" id="paymentRent" min="0" required>
+                </div>
+            </div>
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label>Electricity</label>
+                    <input type="number" class="form-control" id="paymentElectricity" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Gas</label>
+                    <input type="number" class="form-control" id="paymentGas" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Previous Dues</label>
+                    <input type="number" class="form-control" id="paymentDues" min="0" value="0">
+                </div>
+            </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <div class="status-group">${this.getStatusHTML('unpaid')}</div>
+                    <input type="hidden" id="paymentStatus" value="unpaid">
+                </div>
+                <div class="form-group" id="amountPaidGroup" style="display: none;">
+                    <label>Amount Received <span class="required">*</span></label>
+                    <input type="number" class="form-control" id="paymentAmountPaid" min="0.01" step="0.01" value="0">
+                    <small style="color: var(--text-light); display: block; margin-top: 4px;">How much has this tenant actually paid toward the total above?</small>
+                </div>
+                <div class="form-group">
+                    <label style="cursor: pointer; display: block; margin-bottom: 4px;" onclick="Payments.toggleNotes()">
+                        <span id="notesToggleIcon">▶</span> Add Notes
+                    </label>
+                    <div id="notesContainer" style="display: none; margin-top: 4px;">
+                        <textarea class="form-control" id="paymentNotes" rows="2" placeholder="Additional notes"></textarea>
+                    </div>
+                </div>
+                ${this.getTotalHTML()}
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="paymentSubmitBtn">Save Payment</button>
+                </div>
+            </form>
+        `;
+        
+        App.openModal('Record Payment', form);
+        this.setupFormHandlers();
+        
+        setTimeout(() => {
+            const container = document.getElementById('notesContainer');
+            if (container) container.style.display = 'none';
+            const icon = document.getElementById('notesToggleIcon');
+            if (icon) icon.textContent = '▶';
+        }, 50);
+        
+        const firstTenant = document.getElementById('paymentTenant');
+        if (firstTenant.options.length > 1) {
+            firstTenant.selectedIndex = 1;
+            document.getElementById('paymentRent').value = parseFloat(firstTenant.options[1].dataset.rent) || 0;
+            this.updateTotal();
+        }
+    },
+    
+    async editPayment(id, tenantId = null) {
+        if (this._isProcessing) return;
+        
+        const payment = App.state.payments.find(p => p.id === id);
+        if (!payment) {
+            showNotification('Payment not found', 'error');
+            return;
+        }
+        
+        const fixedTenantId = tenantId || payment.tenant_id;
+        const fixedTenant = App.state.tenants.find(t => t.id === fixedTenantId);
+        
+        let tenantDisplay = '';
+        let tenantInfoHTML = '';
+        if (fixedTenant) {
+            const property = App.state.properties.find(p => p.id === fixedTenant.property_id);
+            const propertyName = property ? escapeHTML(property.name) : 'No Property';
+            const roomNum = fixedTenant.room_number || 'N/A';
+            
+            const profilePic = fixedTenant.profile_pic 
+                ? `<img src="${escapeHTML(fixedTenant.profile_pic)}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">`
+                : `<div style="width: 40px; height: 40px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: 500; color: var(--text-light); flex-shrink: 0;">${escapeHTML(fixedTenant.name.charAt(0).toUpperCase())}</div>`;
+            
+            tenantInfoHTML = `
+                <div style="display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--bg); border-radius: var(--radius); margin-bottom: 16px; border: 1px solid var(--border-light);">
+                    ${profilePic}
+                    <div style="display: flex; flex-direction: column;">
+                        <strong style="font-size: 1rem;">${escapeHTML(fixedTenant.name)}</strong>
+                        <span style="color: var(--text-light); font-size: 0.85rem;">${propertyName} - Room ${roomNum}</span>
+                    </div>
+                </div>
+                <input type="hidden" id="paymentTenant" value="${escapeHTML(fixedTenantId)}">
+            `;
+            
+            tenantDisplay = tenantInfoHTML;
+        } else {
+            const tenants = App.state.tenants.filter(t => t.status === 'active' && t.property_id);
+            let options = '<option value="">Select Tenant</option>';
+            tenants.forEach(t => {
+                const property = App.state.properties.find(p => p.id === t.property_id);
+                const selected = t.id === payment.tenant_id ? 'selected' : '';
+                options += `<option value="${escapeHTML(t.id)}" ${selected} data-rent="${property ? property.base_rent : 0}">${escapeHTML(t.name)} - ${property ? escapeHTML(property.name) : 'No Property'}</option>`;
+            });
+            tenantDisplay = `
+                <div class="form-group">
+                    <label>Tenant <span class="required">*</span></label>
+                    <select class="form-control" id="paymentTenant" required>${options}</select>
+                </div>
+            `;
+        }
+        
+        const withoutDue = (payment.monthly_rent || 0) + (payment.electricity || 0) + (payment.gas || 0);
+        const totalWithDue = withoutDue + (payment.previous_dues || 0);
+        
+        const form = `
+            <form id="paymentForm">
+                <input type="hidden" id="paymentId" value="${escapeHTML(payment.id)}">
+                ${tenantDisplay}
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label>Month <span class="required">*</span></label>
+                    <select class="form-control" id="paymentMonth" required>${this.getMonthOptions(payment.month)}</select>
+                </div>
+                <div class="form-group">
+                    <label>Year <span class="required">*</span></label>
+                    <select class="form-control" id="paymentYear" required>${this.getYearOptions(payment.year)}</select>
+                </div>
+                <div class="form-group">
+                    <label>Rent <span class="required">*</span></label>
+                    <input type="number" class="form-control" id="paymentRent" value="${payment.monthly_rent}" min="0" required>
+                </div>
+            </div>
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label>Electricity</label>
+                    <input type="number" class="form-control" id="paymentElectricity" value="${payment.electricity || 0}" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Gas</label>
+                    <input type="number" class="form-control" id="paymentGas" value="${payment.gas || 0}" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Previous Dues</label>
+                    <input type="number" class="form-control" id="paymentDues" value="${payment.previous_dues || 0}" min="0">
+                </div>
+            </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <div class="status-group">${this.getStatusHTML(payment.status)}</div>
+                    <input type="hidden" id="paymentStatus" value="${payment.status}">
+                </div>
+                <div class="form-group" id="amountPaidGroup" style="display: ${payment.status === 'partial' ? 'block' : 'none'};">
+                    <label>Amount Received <span class="required">*</span></label>
+                    <input type="number" class="form-control" id="paymentAmountPaid" value="${payment.amount_paid || 0}" min="0.01" step="0.01">
+                    <small style="color: var(--text-light); display: block; margin-top: 4px;">How much has this tenant actually paid toward the total above?</small>
+                </div>
+                <div class="form-group">
+                    <label style="cursor: pointer; display: block; margin-bottom: 4px;" onclick="Payments.toggleNotes()">
+                        <span id="notesToggleIcon">▶</span> Add Notes
+                    </label>
+                    <div id="notesContainer" style="display: none; margin-top: 4px;">
+                        <textarea class="form-control" id="paymentNotes" rows="2">${escapeHTML(payment.notes || '')}</textarea>
+                    </div>
+                </div>
+                ${this.getTotalHTML(withoutDue, totalWithDue, payment.amount_paid || 0, payment.status)}
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" onclick="App.closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="paymentSubmitBtn">Update Payment</button>
+                </div>
+            </form>
+        `;
+        
+        App.openModal('Edit Payment', form);
+        this.setupFormHandlers();
+    },
+
+    setupFormHandlers() {
+        setTimeout(() => {
+            document.querySelectorAll('#paymentForm input[type="number"]').forEach(input => {
+                input.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                    const container = this.closest('.modal-body');
+                    if (container) container.scrollTop += e.deltaY;
+                }, { passive: false });
+            });
+        }, 100);
+        
+        document.querySelectorAll('.status-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (this.disabled) return;
+                document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                document.getElementById('paymentStatus').value = this.dataset.status;
+                Payments.updateTotal();
+            });
+        });
+        
+        ['paymentRent', 'paymentElectricity', 'paymentGas', 'paymentDues', 'paymentAmountPaid'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => {
+                Payments.updateTotal();
+                if (id === 'paymentDues') Payments.updateDuesConstraint(true);
+            });
+        });
+        
+        this.updateDuesConstraint(false);
+        this.updateTotal();
+        
+        const tenantSelect = document.getElementById('paymentTenant');
+        if (tenantSelect && tenantSelect.tagName === 'SELECT') {
+            tenantSelect.addEventListener('change', function() {
+                const rent = parseFloat(this.options[this.selectedIndex]?.dataset.rent) || 0;
+                document.getElementById('paymentRent').value = rent;
+                Payments.updateTotal();
+            });
+        }
+        
+        const form = document.getElementById('paymentForm');
+        if (form) {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const isEdit = !!document.getElementById('paymentId');
+                if (isEdit) {
+                    await this.updatePayment();
+                } else {
+                    await this.savePayment();
+                }
+            });
+        }
+    },
+    
+    getMonthOptions(selectedMonth) {
+        const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        return months.map((name, i) => {
+            const value = i + 1;
+            return `<option value="${value}" ${value === selectedMonth ? 'selected' : ''}>${escapeHTML(name)}</option>`;
+        }).join('');
+    },
+    
+    getYearOptions(selectedYear) {
+        let options = '';
+        for (let year = selectedYear + 1; year >= selectedYear - 4; year--) {
+            options += `<option value="${year}" ${year === selectedYear ? 'selected' : ''}>${year}</option>`;
+        }
+        return options;
+    },
+    
+    async savePayment() {
+        if (this._isProcessing) return;
+        
+        const submitBtn = document.getElementById('paymentSubmitBtn');
+        const fields = this.getFormFields();
+        const totalPayment = fields.rent + fields.electricity + fields.gas + fields.dues;
+        
+        if (!fields.tenantId) {
+            showNotification('Please select a tenant', 'error');
+            return;
+        }
+        if (fields.rent <= 0) {
+            showNotification('Rent must be greater than 0', 'error');
+            return;
+        }
+        if (fields.status === 'partial') {
+            if (!fields.amountPaid || fields.amountPaid <= 0) {
+                showNotification('Enter the amount received for a partial payment', 'error');
+                return;
+            }
+            if (fields.amountPaid >= totalPayment) {
+                showNotification('Amount received must be less than the total amount due for a partial payment', 'error');
+                return;
+            }
+        }
+        
+        const resolvedAmountPaid = this.resolveAmountPaid(fields.status, totalPayment, fields.amountPaid);
+        
+        this._isProcessing = true;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving...';
+        }
+        Components.showLoading('Recording payment...');
+        
+        try {
+            if (isDemoMode()) {
+                const newPayment = {
+                    id: generateDemoId('pay'),
+                    tenant_id: fields.tenantId,
+                    month: fields.month,
+                    year: fields.year,
+                    monthly_rent: fields.rent,
+                    electricity: fields.electricity,
+                    gas: fields.gas,
+                    previous_dues: fields.dues,
+                    total_payment: totalPayment,
+                    amount_paid: resolvedAmountPaid,
+                    status: fields.status,
+                    notes: fields.notes,
+                    created_at: new Date().toISOString()
+                };
+                addDemoRecord('payments', newPayment);
+                await App.loadData();
+                App.closeModal();
+                await this.render();
+                if (document.getElementById('tenants')?.classList.contains('active')) {
+                    await Tenants.render();
+                }
+                Components.hideLoading();
+                showNotification('Payment recorded successfully', 'success');
+                return;
+            }
+
+            await API.createPayment({
+                tenantId: fields.tenantId,
+                month: fields.month,
+                year: fields.year,
+                monthlyRent: fields.rent,
+                electricity: fields.electricity,
+                gas: fields.gas,
+                previousDues: fields.dues,
+                totalPayment,
+                amountPaid: resolvedAmountPaid,
+                status: fields.status,
+                notes: fields.notes,
+                customCharges: []
+            });
+            
+            await App.loadData();
+            App.closeModal();
+            await this.render();
+            if (document.getElementById('tenants')?.classList.contains('active')) {
+                await Tenants.render();
+            }
+            Components.hideLoading();
+            showNotification('Payment recorded successfully', 'success');
+        } catch (error) {
+            Components.hideLoading();
+            showNotification(error.message || 'Failed to save payment', 'error');
+        } finally {
+            this._isProcessing = false;
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save Payment';
+            }
+        }
+    },
+    
+    async updatePayment() {
+        if (this._isProcessing) return;
+        
+        const submitBtn = document.getElementById('paymentSubmitBtn');
+        const id = document.getElementById('paymentId').value;
+        const fields = this.getFormFields();
+        const totalPayment = fields.rent + fields.electricity + fields.gas + fields.dues;
+        
+        if (!fields.tenantId) {
+            showNotification('Please select a tenant', 'error');
+            return;
+        }
+        if (fields.rent <= 0) {
+            showNotification('Rent must be greater than 0', 'error');
+            return;
+        }
+        if (fields.status === 'partial') {
+            if (!fields.amountPaid || fields.amountPaid <= 0) {
+                showNotification('Enter the amount received for a partial payment', 'error');
+                return;
+            }
+            if (fields.amountPaid >= totalPayment) {
+                showNotification('Amount received must be less than the total amount due for a partial payment', 'error');
+                return;
+            }
+        }
+        
+        const resolvedAmountPaid = this.resolveAmountPaid(fields.status, totalPayment, fields.amountPaid);
+        
+        this._isProcessing = true;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Updating...';
+        }
+        Components.showLoading('Updating payment...');
+        
+        try {
+            if (isDemoMode()) {
+                updateDemoRecord('payments', id, {
+                    tenant_id: fields.tenantId,
+                    month: fields.month,
+                    year: fields.year,
+                    monthly_rent: fields.rent,
+                    electricity: fields.electricity,
+                    gas: fields.gas,
+                    previous_dues: fields.dues,
+                    total_payment: totalPayment,
+                    amount_paid: resolvedAmountPaid,
+                    status: fields.status,
+                    notes: fields.notes
+                });
+                await App.loadData();
+                App.closeModal();
+                await this.render();
+                if (document.getElementById('tenants')?.classList.contains('active')) {
+                    await Tenants.render();
+                }
+                Components.hideLoading();
+                showNotification('Payment updated successfully', 'success');
+                return;
+            }
+
+            await API.updatePayment(id, {
+                tenantId: fields.tenantId,
+                month: fields.month,
+                year: fields.year,
+                monthlyRent: fields.rent,
+                electricity: fields.electricity,
+                gas: fields.gas,
+                previousDues: fields.dues,
+                totalPayment,
+                amountPaid: resolvedAmountPaid,
+                status: fields.status,
+                notes: fields.notes,
+                customCharges: []
+            });
+            
+            await App.loadData();
+            App.closeModal();
+            await this.render();
+            if (document.getElementById('tenants')?.classList.contains('active')) {
+                await Tenants.render();
+            }
+            Components.hideLoading();
+            showNotification('Payment updated successfully', 'success');
+        } catch (error) {
+            Components.hideLoading();
+            showNotification(error.message || 'Failed to update payment', 'error');
+        } finally {
+            this._isProcessing = false;
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Update Payment';
+            }
+        }
+    },
+    
+    async deletePayment(id) {
+        if (this._isProcessing) return;
+        
+        Components.showConfirm(
+            'Delete Payment',
+            'Are you sure you want to delete this payment record?',
+            'Delete',
+            'Cancel',
+            'danger',
+            async () => {
+                this._isProcessing = true;
+                Components.showLoading('Deleting payment...');
+                
+                try {
+                    if (isDemoMode()) {
+                        deleteDemoRecord('payments', id);
+                        await App.loadData();
+                        await this.render();
+                        if (document.getElementById('tenants')?.classList.contains('active')) {
+                            await Tenants.render();
+                        }
+                        Components.hideLoading();
+                        Components.showSuccess('Payment deleted successfully');
+                        return;
+                    }
+                    await API.deletePayment(id);
+                    await App.loadData();
+                    await this.render();
+                    if (document.getElementById('tenants')?.classList.contains('active')) {
+                        await Tenants.render();
+                    }
+                    Components.hideLoading();
+                    Components.showSuccess('Payment deleted successfully');
+                } catch (error) {
+                    Components.hideLoading();
+                    Components.showError(error.message || 'Failed to delete payment');
+                } finally {
+                    this._isProcessing = false;
+                }
+            }
+        );
+    }
+};
+
+window.Payments = Payments;
