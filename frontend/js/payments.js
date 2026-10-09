@@ -583,11 +583,11 @@ const Payments = {
                 <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                 <div class="form-group">
                     <label>Electricity</label>
-                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentElectricity" value="${payment.electricity || 0}" min="0"><label class="payment-dues-check" title="Include electricity"><input type="checkbox" id="paymentElectricityEnabled" aria-label="Include electricity" checked><span>✓</span></label></div>
+                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentElectricity" value="${payment.electricity || 0}" min="0"><label class="payment-dues-check" title="Include electricity"><input type="checkbox" id="paymentElectricityEnabled" aria-label="Include electricity" ${payment.electricity_enabled !== false ? 'checked' : ''}><span>✓</span></label></div>
                 </div>
                 <div class="form-group">
                     <label>Gas</label>
-                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentGas" value="${payment.gas || 0}" min="0"><label class="payment-dues-check" title="Include gas"><input type="checkbox" id="paymentGasEnabled" aria-label="Include gas" checked><span>✓</span></label></div>
+                    <div class="payment-charge-input-wrap"><input type="number" class="form-control" id="paymentGas" value="${payment.gas || 0}" min="0"><label class="payment-dues-check" title="Include gas"><input type="checkbox" id="paymentGasEnabled" aria-label="Include gas" ${payment.gas_enabled !== false ? 'checked' : ''}><span>✓</span></label></div>
                 </div>
                 <div class="form-group">
                     <label>Previous Dues</label>
