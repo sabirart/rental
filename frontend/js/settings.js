@@ -257,40 +257,34 @@ const Settings = {
         `;
         
         const ownerCard = settingsGrid.querySelector('.settings-card-full:first-child');
-        if (ownerCard) {
-            ownerCard.parentNode.insertBefore(card, ownerCard.nextSibling);
-        } else {
-            settingsGrid.prepend(card);
-        }
-        
+        if (ownerCard) ownerCard.parentNode.insertBefore(card, ownerCard.nextSibling);
+        else settingsGrid.prepend(card);
+
+        const backupCard = document.createElement('div');
+        backupCard.className = 'settings-card settings-card-full settings-card-backups';
+        backupCard.innerHTML = `
+          <div class="settings-card-header"><svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><h3>Backup &amp; Data</h3></div>
+          <div class="settings-card-body" id="backupCardBody"><p class="settings-hint">Your latest changes are saved automatically. Export a copy or import a backup file when needed.</p><div class="settings-backup-actions"><button type="button" class="btn btn-sm btn-outline" data-settings-account-action="export">Export Backup</button><button type="button" class="btn btn-sm btn-outline" data-settings-account-action="import">Import Backup</button><input type="file" accept="application/json,.json" data-account-backup-file hidden></div></div>`;
+        card.parentNode.insertBefore(backupCard, card.nextSibling);
         this.updateAccountCard();
     },
 
     updateAccountCard() {
         const body = document.getElementById('accountCardBody');
+        const backupCard = document.querySelector('.settings-card-backups');
+        if (backupCard) backupCard.style.display = Auth.isAuthenticated ? '' : 'none';
         if (!body) return;
         
         if (Auth.isAuthenticated && Auth.user) {
             const user = Auth.user;
             
             body.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                    <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 500; overflow: hidden; flex-shrink: 0;">
-                        ${user.profilePic ? `<img src="${user.profilePic}" style="width: 100%; height: 100%; object-fit: cover;">` : (user.name || 'U').charAt(0).toUpperCase()}
-                    </div>
-                    <div style="flex: 1;">
-                        <div style="font-weight: 500; font-size: 1.05rem;">${user.name || 'User'}</div>
-                        <div style="color: var(--text-light); font-size: 0.85rem;">${user.email || ''}</div>
-                    </div>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="profile">Owner profile</button>
-                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="backup">Backup Now</button>
-                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="export">Export Backup</button>
-                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="import">Import Backup</button>
-                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="restore">Restore Backup</button>
-                        <input type="file" accept="application/json,.json" data-account-backup-file hidden>
-                        <button type="button" class="btn btn-sm btn-danger" data-settings-account-action="logout">Logout</button>
-                    </div>
+                <div class="account-profile-row">
+                    <button type="button" class="account-profile-trigger" aria-label="Edit owner profile">
+                      <span class="account-profile-avatar">${user.profilePic ? `<img src="${user.profilePic}" alt="">` : (user.name || 'U').charAt(0).toUpperCase()}</span>
+                      <span class="account-profile-details"><strong>${this.escapeHtml(user.name || 'User')}</strong><span>${this.escapeHtml(user.email || '')}</span><small>Click to edit profile</small></span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="logout">Sign out</button>
                 </div>
             `;
         } else {
@@ -310,8 +304,13 @@ const Settings = {
         // The Account card is rendered dynamically, so wire its buttons after
         // every render. This intentionally does not touch the topbar auth UI.
         const accountBody = document.getElementById('accountCardBody');
-        if (accountBody) {
-            accountBody.querySelectorAll('[data-settings-account-action]').forEach((button) => {
+        const backupBody = document.getElementById('backupCardBody');
+        const actionBodies = [accountBody, backupBody].filter(Boolean);
+        if (accountBody) accountBody.querySelector('.account-profile-trigger')?.addEventListener('click', () => SiteController.showOwnerProfile(Auth.user || {}));
+        actionBodies.forEach(actionBody => {
+            actionBody.querySelectorAll('[data-settings-account-action]').forEach((button) => {
+                if (button.dataset.actionBound === '1') return;
+                button.dataset.actionBound = '1';
                 button.addEventListener('click', async () => {
                     const action = button.dataset.settingsAccountAction;
                     try {
@@ -333,7 +332,7 @@ const Settings = {
                                 showNotification('Backup exported successfully', 'success');
                             } finally { button.disabled = false; }
                         } else if (action === 'import') {
-                            const picker = accountBody.querySelector('[data-account-backup-file]');
+                            const picker = backupBody?.querySelector('[data-account-backup-file]');
                             if (!picker) throw new Error('Backup file picker is unavailable');
                             picker.onchange = async () => {
                                 const file = picker.files?.[0]; picker.value = ''; if (!file) return;
@@ -351,40 +350,6 @@ const Settings = {
                                 finally { button.disabled = false; }
                             };
                             picker.click();
-                        } else if (action === 'backup') {
-                            button.disabled = true;
-                            const oldLabel = button.textContent;
-                            button.textContent = 'Creating backup…';
-                            try {
-                                const response = await fetch(`${API.baseURL}/auth/backup`, { method: 'POST', credentials: 'include' });
-                                const data = await response.json();
-                                if (!response.ok || !data.success) throw new Error(data.error || data.message || 'Backup failed');
-                                showNotification('Backup created successfully', 'success');
-                            } finally {
-                                button.disabled = false;
-                                button.textContent = oldLabel;
-                            }
-                        } else if (action === 'restore') {
-                            button.disabled = true;
-                            try {
-                                const statusResponse = await fetch(`${API.baseURL}/auth/backup/status`, { credentials: 'include' });
-                                const status = await statusResponse.json();
-                                if (!statusResponse.ok || !status.success) throw new Error(status.error || status.message || 'Could not check backups');
-                                if (!status.data?.backups?.length) throw new Error('No saved backup snapshots were found yet. Use Backup Now first.');
-                                if (window.confirm('Restore the latest backup? This replaces the current Rental Manager data.')) {
-                                    const response = await fetch(`${API.baseURL}/auth/backup/restore`, {
-                                        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ backupId: status.data.backups[0].id })
-                                    });
-                                    const data = await response.json();
-                                    if (!response.ok || !data.success) throw new Error(data.error || data.message || 'Restore failed');
-                                    await App.loadData();
-                                    App.renderCurrentView();
-                                    showNotification('Backup restored successfully', 'success');
-                                }
-                            } finally {
-                                button.disabled = false;
-                            }
                         } else if (action === 'logout') {
                             button.disabled = true;
                             await Auth.logout();
@@ -395,8 +360,10 @@ const Settings = {
                     }
                 });
             });
-        }
+        });
     },
+
+    escapeHtml(value) { return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); },
 
     saveOwnerInfo() {
         const owner = {

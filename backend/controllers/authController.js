@@ -30,6 +30,15 @@ function googleRedirectUrl(req) {
   const fallback = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
   return configuredUrl('GOOGLE_REDIRECT_URI', fallback, '/api/auth/google/callback');
 }
+function friendlyGoogleError(error) {
+  const quotaExceeded = Number(error?.code || error?.response?.status) === 403 && (
+    (Array.isArray(error?.errors) && error.errors.some(item => item?.reason === 'storageQuotaExceeded')) ||
+    (Array.isArray(error?.response?.data?.error?.errors) && error.response.data.error.errors.some(item => item?.reason === 'storageQuotaExceeded')) ||
+    /user's Drive storage quota has been exceeded|storageQuotaExceeded/i.test(String(error?.message || ''))
+  );
+  if (quotaExceeded) return 'Your Google Drive storage is full. Free up space in Google Drive, Gmail, or Google Photos, then sign in again. Rental Manager saves your data in your own Google Drive.';
+  return error?.message || 'Google sign-in could not be completed. Please try again.';
+}
 const authController = {
   async googleStart(req,res,next){
     try {
@@ -80,7 +89,7 @@ const authController = {
       await ensureUserData(user.id, tokens.access_token, user);
       if (process.env.LEGACY_DATABASE_URL || process.env.LEGACY_POSTGRES_URL) { try { const { migrateCurrentUserFromLegacy } = require('../services/legacyMigration'); await migrateCurrentUserFromLegacy(user.id,user.email,user.googleId,tokens.access_token); } catch (migrationError) { console.warn('Legacy migration skipped:', migrationError.message); } }
       res.redirect(`${frontendBaseUrl(req)}/?google_auth=success`);
-    } catch(e) { console.error('Google OAuth callback error:',e); res.redirect(`${frontendBaseUrl(req)}/?google_auth=error&message=${encodeURIComponent(e.message)}`); }
+    } catch(e) { const message = friendlyGoogleError(e); console.error('Google OAuth callback error:', e); res.redirect(`${frontendBaseUrl(req)}/?google_auth=error&message=${encodeURIComponent(message)}`); }
   },
   async exportBackup(req,res,next){
     try {

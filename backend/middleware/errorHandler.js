@@ -1,5 +1,22 @@
+function isDriveStorageQuotaError(err) {
+    return Number(err?.code || err?.response?.status) === 403 && (
+        (Array.isArray(err?.errors) && err.errors.some(item => item?.reason === 'storageQuotaExceeded')) ||
+        (Array.isArray(err?.response?.data?.error?.errors) && err.response.data.error.errors.some(item => item?.reason === 'storageQuotaExceeded')) ||
+        /user's Drive storage quota has been exceeded|storageQuotaExceeded/i.test(String(err?.message || ''))
+    );
+}
+
 const errorHandler = (err, req, res, next) => {
-    console.error('Error:', err.stack);
+    console.error('Error:', err.stack || err.message); 
+
+    if (isDriveStorageQuotaError(err)) {
+        return res.status(403).json({
+            success: false,
+            code: 'GOOGLE_DRIVE_STORAGE_FULL',
+            error: 'Your Google Drive storage is full. Free up space in Google Drive, Gmail, or Google Photos, then sign in again. Rental Manager saves your data in your own Google Drive.',
+            timestamp: new Date().toISOString()
+        });
+    }
 
     // Body too large (express.json's built-in limit) - give a specific,
     // actionable message instead of the raw body-parser error text.

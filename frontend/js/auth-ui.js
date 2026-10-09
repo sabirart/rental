@@ -1,15 +1,27 @@
-// Minimal Google-only account controls.
+// Internal app topbar: Google button for guests; clickable avatar for signed-in users.
 const DashboardAuthBar = {
-  init() { this._updateAuthBar(); Auth.addListener(() => this._updateAuthBar()); },
+  init() {
+    this._updateAuthBar();
+    Auth.addListener(() => this._updateAuthBar());
+    ['authUserProfileTrigger','mobileAuthProfileBtn'].forEach(id => document.getElementById(id)?.addEventListener('click', () => SiteController.showOwnerProfile(Auth.user || {})));
+  },
+  _setAvatar(el, user) {
+    if (!el) return;
+    const pic = user?.profilePic || '';
+    if (pic) { el.innerHTML = ''; const img = document.createElement('img'); img.src = pic; img.alt = ''; img.referrerPolicy = 'no-referrer'; el.appendChild(img); }
+    else el.textContent = (user?.name || user?.email || 'G').trim().charAt(0).toUpperCase();
+  },
   _updateAuthBar() {
     const user = Auth.user || {};
-    const name = document.getElementById('authUserName'); if (name) name.textContent = user.name || 'Google account';
-    const email = document.getElementById('authUserEmail'); if (email) email.textContent = user.email || '';
-    const avatar = document.getElementById('authUserAvatar'); if (avatar) avatar.textContent = (user.name || user.email || 'G').trim().charAt(0).toUpperCase();
-    const badge = document.getElementById('authStatusBadge'); if (badge) { badge.textContent = Auth.isAuthenticated ? 'Google account' : 'Not connected'; badge.className = Auth.isAuthenticated ? 'badge badge-success' : 'badge badge-warning'; }
-    const profile = document.getElementById('authProfileBtn'); if (profile) { profile.style.display = Auth.isAuthenticated ? 'inline-flex' : 'none'; profile.textContent = 'Owner profile'; }
-    const logout = document.getElementById('authLogoutBtn'); if (logout) logout.style.display = Auth.isAuthenticated ? 'inline-flex' : 'none';
+    const authenticated = !!Auth.isAuthenticated;
+    ['appGoogleStartBtn','mobileGoogleStartBtn'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display=authenticated?'none':'inline-flex'; });
+    ['authUserProfileTrigger','mobileAuthProfileBtn'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display=authenticated?'inline-flex':'none'; });
+    this._setAvatar(document.getElementById('authUserAvatar'), user);
+    this._setAvatar(document.getElementById('mobileAuthUserAvatar'), user);
+    ['returnHomeBtn','returnHomeBtnMobile'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display=authenticated?'none':'inline-flex'; });
+    const profile = document.getElementById('authProfileBtn'); if (profile) profile.style.display='none';
+    const logout = document.getElementById('authLogoutBtn'); if (logout) logout.style.display='none';
   }
 };
-document.addEventListener('DOMContentLoaded', () => { DashboardAuthBar.init(); document.getElementById('authProfileBtn')?.addEventListener('click', () => SiteController.showOwnerProfile(Auth.user || {})); });
+document.addEventListener('DOMContentLoaded', () => DashboardAuthBar.init());
 window.DashboardAuthBar = DashboardAuthBar;

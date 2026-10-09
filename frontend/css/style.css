@@ -964,3 +964,20 @@ body.dark-mode .settings-card-header{background:rgba(255,255,255,.045)}
 .topbar-home-btn:hover{background:var(--bg-hover);color:var(--text)}
 .topbar-home-btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .topbar-home-btn svg{width:18px;height:18px;display:block}
+
+
+/* App topbar account controls */
+.app-topbar-left{display:flex;align-items:center;gap:10px;min-width:0}
+.app-topbar-google{display:inline-flex;align-items:center;gap:9px;min-height:38px;padding:8px 13px;background:#fff!important;color:#3c4043!important;border:1px solid #dadce0!important;border-radius:7px!important;font-weight:500!important;box-shadow:0 1px 2px rgba(60,64,67,.08)}
+.app-topbar-google svg{width:18px;height:18px;flex:0 0 18px}.app-topbar-google:hover{background:#f8faff!important;border-color:#c7d2e5!important}
+.app-topbar-profile{width:40px;height:40px;padding:0;border:0;background:transparent;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.app-topbar-profile:hover{background:var(--bg-hover)}.app-topbar-profile .auth-avatar{width:34px;height:34px;border-radius:50%;overflow:hidden;display:grid;place-items:center;font-weight:600;background:var(--bg-hover);color:var(--text)}
+.app-topbar-profile .auth-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.account-profile-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.account-profile-trigger{display:flex;align-items:center;gap:14px;min-width:0;flex:1;text-align:left;padding:0;border:0;background:transparent;color:var(--text);cursor:pointer;border-radius:10px}
+.account-profile-trigger:hover .account-profile-details strong{text-decoration:underline;text-underline-offset:3px}
+.account-profile-avatar{width:52px;height:52px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:var(--bg-hover);font-size:1.25rem;font-weight:600;flex-shrink:0}.account-profile-avatar img{width:100%;height:100%;object-fit:cover}
+.account-profile-details{display:flex;flex-direction:column;gap:3px;min-width:0}.account-profile-details strong{font-weight:600}.account-profile-details span{font-size:.85rem;color:var(--text-light);overflow-wrap:anywhere}.account-profile-details small{font-size:.75rem;color:var(--text-lighter)}
+.settings-backup-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+.owner-profile-photo-wrap{display:flex;justify-content:center;margin:0 0 16px}.owner-profile-photo-button{position:relative;width:88px;height:88px;border:0;padding:0;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#f2f4f7;color:#344054;font-weight:750;font-size:22px;cursor:pointer}.owner-profile-photo-button img{width:100%;height:100%;object-fit:cover}.owner-profile-photo-fallback{display:grid;place-items:center}.owner-profile-photo-edit{position:absolute;left:0;right:0;bottom:0;padding:4px 0;background:rgba(16,24,40,.68);color:white;font-size:11px;font-weight:500}
+@media(max-width:768px){.mobile-topbar{align-items:center;justify-content:space-between}.mobile-topbar-title{display:none!important}.app-topbar-google{min-height:36px;padding:7px 10px;font-size:12px;gap:7px}.app-topbar-google svg{width:17px;height:17px}.app-topbar-profile{width:38px;height:38px}.app-topbar-profile .auth-avatar{width:32px;height:32px}.app-topbar-left{max-width:calc(100vw - 135px)}.app-topbar-right{gap:6px!important}.settings-backup-actions{flex-direction:row}.account-profile-row{align-items:center}}
