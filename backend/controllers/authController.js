@@ -7,6 +7,32 @@ const Drive = require('../services/driveStore');
 const Auth = require('../middleware/auth');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const unsupported = () => { throw new AppError('Google Sign-In is required because Rental Manager data is stored in your Google Drive.', 400); };
+
+// Render dashboard values are sometimes pasted as KEY=value instead of value only.
+// Normalize those values so Express never treats an absolute URL as a relative route.
+function configuredUrl(name, fallback, allowedPath) {
+  let value = String(process.env[name] || '').trim();
+  if (value) {
+    value = value.replace(new RegExp('^' + name + '\\s*=\\s*', 'i'), '').trim();
+    value = value.replace(/^['\"]|['\"]$/g, '').trim();
+  }
+  try {
+    const parsed = new URL(value || fallback);
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported URL protocol');
+    if (allowedPath && parsed.pathname !== allowedPath) throw new Error('Unexpected URL path');
+    return parsed.toString().replace(/\/$/, '');
+  } catch (_) {
+    return fallback.replace(/\/$/, '');
+  }
+}
+function frontendBaseUrl(req) {
+  const fallback = `${req.protocol}://${req.get('host')}`;
+  return configuredUrl('FRONTEND_URL', fallback);
+}
+function googleRedirectUrl(req) {
+  const fallback = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+  return configuredUrl('GOOGLE_REDIRECT_URI', fallback, '/api/auth/google/callback');
+}
 const authController = {
   async register(req,res,next){try{unsupported();}catch(e){next(e);}},
   async verifyEmail(req,res,next){try{unsupported();}catch(e){next(e);}},
@@ -16,7 +42,7 @@ const authController = {
   async resetPassword(req,res,next){try{unsupported();}catch(e){next(e);}},
   async googleStart(req,res,next){
     try {
-      const oauth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`);
+      const oauth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, googleRedirectUrl(req));
       const state = crypto.randomBytes(24).toString('hex');
       const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
       res.setHeader('Set-Cookie', `google_oauth_state=${state}; Max-Age=600; Path=/; HttpOnly; SameSite=Lax${secure}`);
@@ -28,7 +54,7 @@ const authController = {
     try {
       const cookies = Object.fromEntries((req.headers.cookie||'').split(';').map(v=>v.trim()).filter(Boolean).map(v=>{const i=v.indexOf('=');return [v.slice(0,i),decodeURIComponent(v.slice(i+1))];}));
       if(!req.query.state || req.query.state !== cookies.google_oauth_state) throw new AppError('Google sign-in session expired. Please try again.',400);
-      const oauth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/api/auth/google/callback`);
+      const oauth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, googleRedirectUrl(req));
       const { tokens } = await oauth.getToken(req.query.code);
       oauth.setCredentials(tokens);
       const info = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers:{Authorization:`Bearer ${tokens.access_token}`} });
@@ -42,8 +68,8 @@ const authController = {
       if(tokens.refresh_token) cookiesOut.push(`google_drive_refresh_token=${encodeURIComponent(tokens.refresh_token)}; Max-Age=2592000; Path=/; HttpOnly; SameSite=Lax${secure}`);
       res.setHeader('Set-Cookie',cookiesOut);
       if (process.env.LEGACY_DATABASE_URL || process.env.LEGACY_POSTGRES_URL) { try { const { migrateCurrentUserFromLegacy } = require('../services/legacyMigration'); await migrateCurrentUserFromLegacy(user.id,user.email,user.googleId,tokens.access_token); } catch (migrationError) { console.warn('Legacy migration skipped:', migrationError.message); } }
-      res.redirect(`${process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`}?google_auth=success`);
-    } catch(e) { console.error('Google OAuth callback error:',e); res.redirect(`${process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`}?google_auth=error&message=${encodeURIComponent(e.message)}`); }
+      res.redirect(`${frontendBaseUrl(req)}/?google_auth=success`);
+    } catch(e) { console.error('Google OAuth callback error:',e); res.redirect(`${frontendBaseUrl(req)}/?google_auth=error&message=${encodeURIComponent(e.message)}`); }
   },
   async googleLogin(req,res,next){
     try {
