@@ -650,7 +650,7 @@ const Tenants = {
                     : '<span class="badge badge-danger">Unpaid</span>';
             
             html += `
-                <div class="payment-history-item" onclick="Payments.editPayment('${escapeHTML(payment.id)}', '${escapeHTML(tenant.id)}')" style="
+                <div class="payment-history-item" onclick="Payments.editPayment('${escapeHTML(payment.id)}', '${escapeHTML(payment.tenant_id)}')" style="
                     border: 1px solid var(--border-light);
                     border-radius: 8px;
                     padding: 12px 16px;
@@ -755,21 +755,27 @@ const Tenants = {
                 if (trigger) { e.preventDefault(); e.stopPropagation(); this.toggleDescription(trigger); }
             });
         }
-        document.getElementById('addTenantBtn').addEventListener('click', () => {
-            this.showAddForm();
-        });
+        const addTenantBtn = document.getElementById('addTenantBtn');
+        if (addTenantBtn && !addTenantBtn.dataset.bound) {
+            addTenantBtn.dataset.bound = '1';
+            addTenantBtn.addEventListener('click', () => this.showAddForm());
+        }
         
-        document.getElementById('tenantSearch').addEventListener('input', debounce((e) => {
-            this.filterTenants(e.target.value);
-        }, 300));
-        
-        document.getElementById('tenantFilter').addEventListener('change', (e) => {
-            this.filterTenants(document.getElementById('tenantSearch').value, e.target.value);
-        });
-        
-        document.getElementById('tenantPropertyFilter').addEventListener('change', (e) => {
-            this.filterTenants(document.getElementById('tenantSearch').value, document.getElementById('tenantFilter').value);
-        });
+        const search = document.getElementById('tenantSearch');
+        if (search && !search.dataset.bound) {
+            search.dataset.bound = '1';
+            search.addEventListener('input', debounce((e) => this.filterTenants(e.target.value), 300));
+        }
+        const statusFilter = document.getElementById('tenantFilter');
+        if (statusFilter && !statusFilter.dataset.bound) {
+            statusFilter.dataset.bound = '1';
+            statusFilter.addEventListener('change', (e) => this.filterTenants(search?.value || '', e.target.value));
+        }
+        const propertyFilter = document.getElementById('tenantPropertyFilter');
+        if (propertyFilter && !propertyFilter.dataset.bound) {
+            propertyFilter.dataset.bound = '1';
+            propertyFilter.addEventListener('change', () => this.filterTenants(search?.value || '', statusFilter?.value || 'all'));
+        }
     },
     
     filterTenants(search, filter = 'all') {
@@ -1035,7 +1041,7 @@ const Tenants = {
 
         overlay.innerHTML = `
             <div class="popup-box">
-                <button class="popup-close-x" aria-label="Close">&times;</button>
+                <button type="button" class="popup-close-x" aria-label="Close">&times;</button>
                 <h3 class="popup-title">Contact ${escapeHTML(tenant.name)}</h3>
                 <p class="popup-message">${escapeHTML(rawNumber)}</p>
                 <div class="contact-options-list">
@@ -1065,7 +1071,7 @@ const Tenants = {
         document.addEventListener('keydown', escHandler);
 
         overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-        overlay.querySelector('.popup-close-x').addEventListener('click', close);
+        overlay.querySelector('.popup-close-x').addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); close(); });
 
         overlay.querySelector('[data-action="copy"]').addEventListener('click', async () => {
             try {
@@ -1123,16 +1129,11 @@ const Tenants = {
                 <div style="padding: 40px 20px; text-align: center;">
                     <p style="font-size: 1.1rem; margin-bottom: 12px; color: var(--text);">No Properties Available</p>
                     <p style="color: var(--text-light); margin-bottom: 20px;">You need to add a property before adding a tenant.</p>
-                    <button class="btn btn-primary" onclick="
-                        App.closeModal(); 
-                        document.querySelector('[data-view=\\'properties\\']').click();
-                        setTimeout(() => Properties.showAddForm(), 300);
-                    ">
-                        Add Property First
-                    </button>
+                    <button type="button" class="btn btn-primary" id="addPropertyFromTenantEmpty">Add Property First</button>
                 </div>
             `;
             App.openModal('Add Tenant', noPropertyForm);
+            document.getElementById('addPropertyFromTenantEmpty')?.addEventListener('click', () => { App.closeModal(); App.navigateTo('properties'); setTimeout(() => Properties.showAddForm(), 100); });
             return;
         }
         

@@ -5,6 +5,7 @@ const Settings = {
         this.loadSettings();
         this.setupAuthSettings();
         this.setupEventListeners();
+        this.setupDeleteAccount();
         this.loadOwnerInfo();
         this.injectRecycleCard();
         this.loadNotificationSettings();
@@ -207,6 +208,94 @@ const Settings = {
         }
     },
 
+    setupDeleteAccount() {
+        const openBtn = document.getElementById('deleteAccountBtn');
+        const overlay = document.getElementById('deleteAccountOverlay');
+        const input = document.getElementById('deleteAccountConfirmText');
+        const confirmBtn = document.getElementById('deleteAccountConfirmBtn');
+        if (!overlay || !input || !confirmBtn) return;
+        if (openBtn && !openBtn.dataset.bound) {
+            openBtn.dataset.bound = '1';
+            openBtn.addEventListener('click', () => {
+                input.value = '';
+                confirmBtn.disabled = true;
+                const status = document.getElementById('deleteAccountStatus');
+                if (status) status.textContent = '';
+                overlay.style.display = 'flex';
+                input.focus();
+            });
+        }
+        const close = () => { overlay.style.display = 'none'; };
+        ['deleteAccountClose','deleteAccountCancel'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el && !el.dataset.bound) { el.dataset.bound = '1'; el.addEventListener('click', close); }
+        });
+        if (!overlay.dataset.bound) {
+            overlay.dataset.bound = '1';
+            overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+            document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.style.display !== 'none') close(); });
+        }
+        if (!input.dataset.bound) {
+            input.dataset.bound = '1';
+            input.addEventListener('input', () => { confirmBtn.disabled = input.value.trim().toLowerCase() !== 'delete my account'; });
+        }
+        const exportBtn = document.getElementById('deleteAccountExportBtn');
+        if (exportBtn && !exportBtn.dataset.bound) {
+            exportBtn.dataset.bound = '1';
+            exportBtn.addEventListener('click', () => this.downloadAccountBackup(exportBtn));
+        }
+        if (!confirmBtn.dataset.bound) {
+            confirmBtn.dataset.bound = '1';
+            confirmBtn.addEventListener('click', async () => {
+                if (input.value.trim().toLowerCase() !== 'delete my account' || confirmBtn.disabled) return;
+                const status = document.getElementById('deleteAccountStatus');
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = 'Deleting…';
+                if (status) status.textContent = 'Deleting your app data and signing you out…';
+                try {
+                    const response = await fetch(`${API.baseURL}/auth/account/delete`, { method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ confirmText: input.value.trim() }) });
+                    const result = await response.json().catch(() => ({}));
+                    if (!response.ok || !result.success) throw new Error(result.error || result.message || 'Could not delete this account.');
+                    localStorage.removeItem('auth_user');
+                    ['tenants_cache','properties_cache','payments_cache','last_cache_update','ownerInfo','recycle_bin_cache'].forEach(key => localStorage.removeItem(key));
+                    Auth.clear();
+                    overlay.style.display = 'none';
+                    window.location.href = `${window.location.pathname}?showHome=1`;
+                } catch (error) {
+                    if (status) status.textContent = error.message || 'Account deletion failed. Please try again.';
+                    confirmBtn.disabled = input.value.trim().toLowerCase() !== 'delete my account';
+                } finally {
+                    confirmBtn.textContent = 'Delete Account';
+                }
+            });
+        }
+    },
+
+    async downloadAccountBackup(button) {
+        if (!Auth.isAuthenticated) { showNotification('Sign in before exporting a backup', 'warning'); return; }
+        const status = document.getElementById('deleteAccountStatus');
+        const oldText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Preparing backup…';
+        try {
+            const response = await fetch(`${API.baseURL}/auth/backup/export`, { credentials: 'include' });
+            const backup = await response.json().catch(() => ({}));
+            if (!response.ok || !backup || !Array.isArray(backup.properties)) throw new Error(backup.error || 'Could not export backup.');
+            const blob = new Blob([JSON.stringify(backup, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `rental-manager-backup-${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+            if (status) status.textContent = 'Backup downloaded. You can now confirm deletion if you wish.';
+        } catch (error) {
+            if (status) status.textContent = error.message || 'Backup export failed.';
+        } finally {
+            button.disabled = false;
+            button.textContent = oldText;
+        }
+    },
+
     loadOwnerInfo() {
         const owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
         const nameInput = document.getElementById('ownerName');
@@ -281,7 +370,7 @@ const Settings = {
             body.innerHTML = `
                 <div class="account-profile-row">
                     <button type="button" class="account-profile-trigger" aria-label="Edit owner profile">
-                      <span class="account-profile-avatar">${user.profilePic ? `<img src="${user.profilePic}" alt="">` : (user.name || 'U').charAt(0).toUpperCase()}</span>
+                      <span class="account-profile-avatar">${(user.profilePic || user.picture) ? `<img src="${user.profilePic || user.picture}" alt="">` : (user.name || user.email || 'U').charAt(0).toUpperCase()}</span>
                       <span class="account-profile-details"><strong>${this.escapeHtml(user.name || 'User')}</strong><span>${this.escapeHtml(user.email || '')}</span><small>Click to edit profile</small></span>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="logout">Sign out</button>

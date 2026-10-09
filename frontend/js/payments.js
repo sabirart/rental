@@ -57,7 +57,7 @@ const Payments = {
             const total = (payment.monthly_rent || 0) + (payment.electricity || 0) + (payment.gas || 0) + (payment.previous_dues || 0);
             
             html += `
-                <tr>
+                <tr data-payment-id="${escapeHTML(payment.id)}" style="cursor:pointer">
                     <td><strong>${tenantName}</strong></td>
                     <td>${roomInfo}</td>
                     <td>${escapeHTML(getMonthName(payment.month))}</td>
@@ -80,8 +80,12 @@ const Payments = {
         
         tbody.innerHTML = html;
         
-        tbody.querySelectorAll('.edit').forEach(btn => btn.addEventListener('click', () => this.editPayment(btn.dataset.id)));
-        tbody.querySelectorAll('.delete').forEach(btn => btn.addEventListener('click', () => this.deletePayment(btn.dataset.id)));
+        tbody.querySelectorAll('.edit').forEach(btn => btn.addEventListener('click', (event) => { event.stopPropagation(); this.editPayment(btn.dataset.id); }));
+        tbody.querySelectorAll('.delete').forEach(btn => btn.addEventListener('click', (event) => { event.stopPropagation(); this.deletePayment(btn.dataset.id); }));
+        tbody.querySelectorAll('tr[data-payment-id]').forEach(row => row.addEventListener('click', event => {
+            if (event.target.closest('button, a, input, select, .action-buttons')) return;
+            this.editPayment(row.dataset.paymentId);
+        }));
     },
     
     setupEventListeners() {
@@ -92,9 +96,12 @@ const Payments = {
                 if (trigger) { e.preventDefault(); e.stopPropagation(); this.toggleNotes(trigger); }
             });
         }
-        document.getElementById('addPaymentBtn').addEventListener('click', () => this.showAddForm());
-        document.getElementById('paymentMonthFilter').addEventListener('change', () => this.renderPayments());
-        document.getElementById('paymentYearFilter').addEventListener('change', () => this.renderPayments());
+        const addBtn = document.getElementById('addPaymentBtn');
+        if (addBtn && !addBtn.dataset.bound) { addBtn.dataset.bound = '1'; addBtn.addEventListener('click', () => this.showAddForm()); }
+        const monthFilter = document.getElementById('paymentMonthFilter');
+        if (monthFilter && !monthFilter.dataset.bound) { monthFilter.dataset.bound = '1'; monthFilter.addEventListener('change', () => this.renderPayments()); }
+        const yearFilter = document.getElementById('paymentYearFilter');
+        if (yearFilter && !yearFilter.dataset.bound) { yearFilter.dataset.bound = '1'; yearFilter.addEventListener('change', () => this.renderPayments()); }
     },
     
     getFormFields() {
@@ -409,10 +416,11 @@ const Payments = {
     },
 
     showAddForm() {
-        const tenants = App.state.tenants.filter(t => t.status === 'active' && t.property_id);
+        const tenants = (App.state.tenants || []).filter(t => t.status === 'active');
         
         if (!tenants.length) {
-            showNotification('No active tenants found. Please add a tenant first.', 'warning');
+            App.openModal('Add a Tenant First', `<div class="empty-state-full" style="padding:28px 16px;text-align:center"><p style="margin:0 0 8px">There are no active tenants to attach this payment to.</p><p class="settings-hint" style="margin:0 0 18px">Add a property and tenant first, then record the payment.</p><button type="button" class="btn btn-primary" id="paymentAddTenantFirstBtn">Add Tenant</button></div>`);
+            document.getElementById('paymentAddTenantFirstBtn')?.addEventListener('click', () => { App.closeModal(); App.navigateTo('tenants'); setTimeout(() => Tenants.showAddForm(), 100); });
             return;
         }
         

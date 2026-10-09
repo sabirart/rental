@@ -39,5 +39,6 @@ router.put('/profile', authMiddleware.authenticate, [
     validate
 ], authController.updateProfile);
 
+router.post('/account/delete', authMiddleware.authenticate, authController.deleteAccount);
 router.post('/logout', authMiddleware.authenticate, authController.logout);
 module.exports = router;

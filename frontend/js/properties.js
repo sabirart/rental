@@ -96,7 +96,8 @@ const Properties = {
     },
     
     setupEventListeners() {
-        document.getElementById('addPropertyBtn').addEventListener('click', () => this.showAddForm());
+        const addBtn = document.getElementById('addPropertyBtn');
+        if (addBtn && !addBtn.dataset.bound) { addBtn.dataset.bound = '1'; addBtn.addEventListener('click', () => this.showAddForm()); }
     },
     
     showAddForm() {

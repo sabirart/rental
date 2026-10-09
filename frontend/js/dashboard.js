@@ -7,40 +7,26 @@ const Dashboard = {
     },
     
     async renderStats() {
-        try {
-            const stats = await API.getDashboardStats();
-            const data = stats.data || {};
-            
-            document.getElementById('totalProperties').textContent = data.total_properties || 0;
-            document.getElementById('totalTenants').textContent = data.total_tenants || 0;
-            document.getElementById('occupiedRooms').textContent = data.occupied_rooms || 0;
-            document.getElementById('monthlyRevenue').textContent = formatCurrency(data.monthly_revenue || 0);
-            
-            this.renderRatios();
-            
-        } catch (error) {
-            const tenants = App.state.tenants;
-            const properties = App.state.properties;
-            const payments = App.state.payments;
-            
-            document.getElementById('totalProperties').textContent = properties.length;
-            document.getElementById('totalTenants').textContent = tenants.length;
-            document.getElementById('occupiedRooms').textContent = tenants.filter(t => t.status === 'active' && t.property_id).length;
-            
-            const currentMonth = getCurrentMonth();
-            const currentYear = getCurrentYear();
-            const monthlyRevenue = payments
-                .filter(p => p.month === currentMonth && p.year === currentYear)
-                .reduce((sum, p) => {
-                    const received = p.status === 'paid' ? (p.total_payment || p.total || 0)
-                        : p.status === 'unpaid' ? 0
-                        : (p.amount_paid || 0);
-                    return sum + received;
-                }, 0);
-            document.getElementById('monthlyRevenue').textContent = formatCurrency(monthlyRevenue);
-            
-            this.renderRatios();
-        }
+        // Derive these cards from the user-scoped records already loaded in the UI.
+        const tenants = Array.isArray(App.state.tenants) ? App.state.tenants : [];
+        const properties = Array.isArray(App.state.properties) ? App.state.properties : [];
+        const payments = Array.isArray(App.state.payments) ? App.state.payments : [];
+        const activeTenants = tenants.filter(t => t.status === 'active' && t.property_id && t.room_number != null);
+        const occupiedRoomKeys = new Set(activeTenants.map(t => `${t.property_id}:${t.room_number}`));
+        const currentMonth = getCurrentMonth();
+        const currentYear = getCurrentYear();
+        const monthlyRevenue = payments
+            .filter(p => Number(p.month) === Number(currentMonth) && Number(p.year) === Number(currentYear))
+            .reduce((sum, p) => {
+                const amount = p.amount_paid != null ? Number(p.amount_paid) : (p.status === 'paid' ? Number(p.total_payment || p.total || 0) : 0);
+                return sum + (Number.isFinite(amount) ? amount : 0);
+            }, 0);
+        const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+        set('totalProperties', properties.length);
+        set('totalTenants', tenants.length);
+        set('occupiedRooms', occupiedRoomKeys.size);
+        set('monthlyRevenue', formatCurrency(monthlyRevenue));
+        this.renderRatios();
     },
     
     renderRatios() {

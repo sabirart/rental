@@ -148,6 +148,38 @@ async function startFreshAccount() {
   return { createdAt: new Date().toISOString() };
 }
 
+async function deleteUserAccountData() {
+  const drive = driveClient();
+  const folderNames = [FOLDER_NAME, BACKUP_FOLDER_NAME];
+  const deleted = { files: 0, folders: 0 };
+  for (const folderName of folderNames) {
+    const folderSearch = await drive.files.list({
+      q: `name = '${qEscape(folderName)}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: 'nextPageToken,files(id,name)', spaces: 'drive', pageSize: 100
+    });
+    for (const folder of (folderSearch.data.files || [])) {
+      let pageToken;
+      do {
+        const children = await drive.files.list({
+          q: `'${folder.id}' in parents and trashed = false`,
+          fields: 'nextPageToken,files(id,name,mimeType)', spaces: 'drive', pageSize: 100,
+          ...(pageToken ? { pageToken } : {})
+        });
+        for (const file of (children.data.files || [])) {
+          // These folders are created and owned by Rental Manager; deleting
+          // their contents removes the account's live records and recovery files.
+          await drive.files.delete({ fileId: file.id });
+          deleted.files += 1;
+        }
+        pageToken = children.data.nextPageToken;
+      } while (pageToken);
+      await drive.files.delete({ fileId: folder.id });
+      deleted.folders += 1;
+    }
+  }
+  return deleted;
+}
+
 async function getData() {
   const ctx = getContext();
   if (ctx.data) return ctx.data;
@@ -220,4 +252,4 @@ async function mutate(mutator) {
   });
 }
 function rowsForUser(data, userId) { return data; }
-module.exports = { context, getContext, runWithRequestContext, transaction, getData, saveData, mutate, driveClient, findOrCreateFolder, findDataFile, writeDriveData, emptyData, requireToken, backupStatus, createBackupSnapshot, restoreBackup, startFreshAccount, FOLDER_NAME, DATA_FILE_NAME, BACKUP_FOLDER_NAME };
+module.exports = { context, getContext, runWithRequestContext, transaction, getData, saveData, mutate, driveClient, findOrCreateFolder, findDataFile, writeDriveData, emptyData, requireToken, backupStatus, createBackupSnapshot, restoreBackup, startFreshAccount, deleteUserAccountData, FOLDER_NAME, DATA_FILE_NAME, BACKUP_FOLDER_NAME };

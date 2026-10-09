@@ -137,6 +137,22 @@ const authController = {
   async backupStatus(req,res,next){try{const token=await getDriveToken(req,res);if(!token)throw new AppError('Google Drive is not connected',401);res.json({success:true,data:await Drive.backupStatus()});}catch(e){next(e);}},
   async restoreBackup(req,res,next){try{const token=await getDriveToken(req,res);if(!token)throw new AppError('Google Drive is not connected',401);const result=await Drive.restoreBackup(req.body?.backupId||null);res.json({success:true,data:result,message:'Backup restored successfully'});}catch(e){next(e);}},
   async startFreshAccount(req,res,next){try{const token=await getDriveToken(req,res);if(!token)throw new AppError('Google Drive is not connected',401);const result=await Drive.startFreshAccount();res.json({success:true,data:result,message:'New empty account created. Existing backup snapshots were preserved.'});}catch(e){next(e);}},
+  async deleteAccount(req,res,next){
+    try {
+      if (String(req.body?.confirmText || '').trim().toLowerCase() !== 'delete my account') throw new AppError('Type delete my account to confirm permanent deletion.',400);
+      const cookies = Object.fromEntries((req.headers.cookie||'').split(';').map(v=>v.trim()).filter(Boolean).map(v=>{const i=v.indexOf('=');return [v.slice(0,i),decodeURIComponent(v.slice(i+1))];}));
+      const deleted = await Drive.deleteUserAccountData();
+      // Revoke the stored Google refresh token best-effort after deleting the app data.
+      if (cookies.google_drive_refresh_token) {
+        try { await fetch('https://oauth2.googleapis.com/revoke', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({token:cookies.google_drive_refresh_token}) }); }
+        catch (revokeError) { console.warn('Google token revocation after account deletion was skipped:', revokeError.message); }
+      }
+      Auth.clearCookieHeader(res); clearDriveCookie(res);
+      const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+      res.setHeader('Set-Cookie', [...(Array.isArray(res.getHeader('Set-Cookie')) ? res.getHeader('Set-Cookie') : [res.getHeader('Set-Cookie')].filter(Boolean)), `google_oauth_state=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`]);
+      res.json({success:true,data:deleted,message:'Rental Manager account data deleted and signed out.'});
+    } catch(e) { next(e); }
+  },
   async logout(req,res,next){try{Auth.clearCookieHeader(res);clearDriveCookie(res);res.json({success:true,message:'Logged out successfully'});}catch(e){next(e);}},
   async me(req,res,next){try{const d=await Drive.getData();const u=d.user||{};res.json({success:true,data:{user:{id:req.userId,name:u.name||req.user?.name,email:req.userEmail,profilePic:u.profilePic||req.user?.profilePic||null,profileComplete:!!u.profileComplete,googleId:req.user?.googleId||null,isVerified:true}}});}catch(e){next(e);}},
   async updateProfile(req,res,next){try{const {name,profilePic,profileComplete}=req.body||{};const updated=await Drive.mutate(d=>{d.user=d.user||{};d.user.id=req.userId;d.user.name=String(name||d.user.name||req.user.name||'').trim();d.user.email=req.userEmail;d.user.profilePic=profilePic!==undefined?profilePic:(d.user.profilePic||req.user.profilePic||null);if(profileComplete===true)d.user.profileComplete=true;return d.user;});res.json({success:true,data:{user:{id:req.userId,name:updated.name,email:req.userEmail,profilePic:updated.profilePic||null,profileComplete:!!updated.profileComplete,googleId:req.user?.googleId||null,isVerified:true}},message:'Owner profile saved successfully'});}catch(e){next(e);}},

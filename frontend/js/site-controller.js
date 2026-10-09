@@ -13,7 +13,7 @@ const SiteController = {
     ['appGoogleStartBtn','mobileGoogleStartBtn'].forEach(id => document.getElementById(id)?.addEventListener('click', startGoogle));
     document.getElementById('ownerProfilePhotoButton')?.addEventListener('click', () => document.getElementById('ownerProfilePhotoInput')?.click());
     document.getElementById('ownerProfilePhotoInput')?.addEventListener('change', e => this.handleProfilePhoto(e));
-    ['returnHomeBtn', 'returnHomeBtnMobile'].forEach(id => document.getElementById(id)?.addEventListener('click', () => this.returnToHome()));
+    ['returnHomeBtn', 'returnHomeBtnMobile', 'returnHomeBtnAuth', 'returnHomeBtnMobileAuth'].forEach(id => document.getElementById(id)?.addEventListener('click', () => this.returnToHome()));
     document.getElementById('heroTryDemo')?.addEventListener('click', e => { e.preventDefault(); this.startDemo(); });
     document.getElementById('myDashboardTrigger')?.addEventListener('click', e => { e.preventDefault(); this.unlockDashboard(); });
     document.getElementById('heroMyDashboard')?.addEventListener('click', e => { e.preventDefault(); this.unlockDashboard(); });
@@ -35,7 +35,7 @@ const SiteController = {
         Auth.setUser(result.user, null);
         document.getElementById('ownerProfileModal').classList.remove('active');
         document.body.style.overflow = '';
-        this.unlockDashboard();
+        this.updateAuthUI(true);
       } catch (err) { error.textContent = err.message || 'Could not save your profile. Please try again.'; error.style.display = 'block'; }
       finally { btn.disabled = false; btn.textContent = Auth.user?.profileComplete ? 'Save changes' : 'Next'; }
     });
@@ -81,7 +81,8 @@ const SiteController = {
       this.updateAuthUI(true);
       this.hideAuthLoading();
       if (showHome) return;
-      this.unlockDashboard();
+      // Keep the public landing page visible after login. Users open the app
+      // deliberately with the Dashboard button instead of being redirected.
       if (!user.profileComplete) this.showOwnerProfile(user);
       if (authCallback) history.replaceState({}, document.title, location.pathname + location.hash);
     } catch (error) {
@@ -131,8 +132,10 @@ const SiteController = {
     const heroDashboard = document.getElementById('heroMyDashboard');
     const logout = document.getElementById('authLogoutBtn');
     if (google) google.style.display = isAuth ? 'none' : 'inline-flex';
-    if (dashboard) dashboard.style.display = isAuth ? 'inline-flex' : 'none';
-    if (heroDashboard) heroDashboard.style.display = isAuth ? 'inline-flex' : 'none';
+    // The public site's topbar is for sign-in/sign-out only; Dashboard lives
+    // in the hero CTA. Never show two competing dashboard buttons up top.
+    if (dashboard) dashboard.style.display = 'none';
+    if (heroDashboard) { heroDashboard.style.display = isAuth ? 'inline-flex' : 'none'; heroDashboard.textContent = 'Dashboard'; }
     if (logout) logout.style.display = isAuth ? 'inline-flex' : 'none';
     document.body.classList.toggle('returning-user', isAuth);
     const demo = document.getElementById('heroTryDemo');
@@ -149,8 +152,9 @@ const SiteController = {
     document.getElementById('ownerProfileNext').textContent = user.profileComplete ? 'Save changes' : 'Next';
     const photo = document.getElementById('ownerProfilePhotoPreview');
     const fallback = document.getElementById('ownerProfilePhotoFallback');
-    if (photo) { photo.dataset.profilePic = user.profilePic || ''; photo.src = user.profilePic || ''; photo.style.display = user.profilePic ? 'block' : 'none'; }
-    if (fallback) fallback.style.display = user.profilePic ? 'none' : 'grid';
+    const currentPhoto = user.profilePic || user.picture || '';
+    if (photo) { photo.dataset.profilePic = currentPhoto; photo.src = currentPhoto; photo.style.display = currentPhoto ? 'block' : 'none'; }
+    if (fallback) fallback.style.display = currentPhoto ? 'none' : 'grid';
     const picker = document.getElementById('ownerProfilePhotoInput'); if (picker) picker.value = '';
     modal.classList.add('active'); document.body.style.overflow = 'hidden';
   },
