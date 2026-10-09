@@ -644,13 +644,23 @@ const Settings = {
             </div>
         `;
         
-        const dataManagementCard = settingsGrid.querySelector('.settings-card-full:last-child');
-        if (dataManagementCard) {
-            dataManagementCard.parentNode.insertBefore(recycleCard, dataManagementCard.nextSibling);
+        const moreCard = settingsGrid.querySelector('.more-settings-card');
+        if (moreCard) {
+            settingsGrid.insertBefore(recycleCard, moreCard);
+            // More is deliberately the final settings card, after Recycle Bin.
+            settingsGrid.appendChild(moreCard);
         } else {
             settingsGrid.appendChild(recycleCard);
         }
         
+        const moreWord = moreCard?.querySelector('.more-settings-toggle-word');
+        if (moreCard && moreWord && !moreCard.dataset.labelBound) {
+            moreCard.dataset.labelBound = '1';
+            const syncMoreLabel = () => { moreWord.textContent = moreCard.open ? 'Hide' : 'Show'; };
+            moreCard.addEventListener('toggle', syncMoreLabel);
+            syncMoreLabel();
+        }
+
         const openBtn = document.getElementById('openRecycleBtn');
         if (openBtn) {
             openBtn.removeEventListener('click', this._openRecycleHandler);

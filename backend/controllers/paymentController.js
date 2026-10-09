@@ -40,9 +40,18 @@ const paymentController = {
             if (data.monthlyRent === undefined || data.monthlyRent === null || Number(data.monthlyRent) < 0) throw new AppError('Monthly rent must be a non-negative number', 400);
             
             const existing = await Payment.findAll(req.userId, { tenantId: data.tenantId, month: data.month, year: data.year });
-            if (existing.length > 0) throw new AppError('Payment already exists for this tenant for this month/year', 400);
+            // The app pre-creates a zero-value row for each active tenant in the
+            // current month. Treat that row as a placeholder to fill, not as a
+            // duplicate that blocks the Record Payment workflow.
+            const placeholderId = `${data.tenantId}-${Number(data.year)}-${Number(data.month)}`;
+            const placeholder = existing.find(p => p.id === placeholderId &&
+                Number(p.monthly_rent || 0) === 0 && Number(p.electricity || 0) === 0 &&
+                Number(p.gas || 0) === 0 && Number(p.previous_dues || 0) === 0 && !p.notes);
+            if (existing.length > 0 && !placeholder) {
+                throw new AppError('A payment record already exists for this tenant for the selected month and year. Open it from Payment History to update it.', 400);
+            }
             
-            const totalPayment = (data.monthlyRent || 0) + (data.electricity || 0) + (data.gas || 0) + (data.previousDues || 0);
+            const totalPayment = (Number(data.monthlyRent) || 0) + (Number(data.electricity) || 0) + (Number(data.gas) || 0) + (Number(data.previousDues) || 0);
 
             if (data.amountPaid !== undefined && data.amountPaid !== null && data.amountPaid !== '') {
                 if (Number(data.amountPaid) < 0) throw new AppError('Amount paid cannot be negative', 400);
@@ -51,11 +60,10 @@ const paymentController = {
             
             let payment;
             try {
-                payment = await Payment.create({
-                    id: generateId(),
-                    ...data,
-                    totalPayment
-                }, req.userId);
+                const payload = { ...data, totalPayment };
+                payment = placeholder
+                    ? await Payment.update(placeholder.id, payload, req.userId)
+                    : await Payment.create({ id: generateId(), ...payload }, req.userId);
             } catch (modelError) {
                 // Payment.create throws plain Errors for amount/status
                 // consistency problems (e.g. "partial" with no amount) -
@@ -63,7 +71,7 @@ const paymentController = {
                 throw new AppError(modelError.message, 400);
             }
             
-            res.status(201).json({ success: true, data: payment, message: 'Payment recorded successfully' });
+            res.status(placeholder ? 200 : 201).json({ success: true, data: payment, message: 'Payment recorded successfully' });
         } catch (error) {
             next(error);
         }

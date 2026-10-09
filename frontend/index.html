@@ -12,8 +12,8 @@
     </style>
     <title>Rental Manager · Free Property Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
-    <link rel="stylesheet" href="css/style.css?v=v20" />
-    <link rel="stylesheet" href="css/web_style.css?v=v20" />
+    <link rel="stylesheet" href="css/style.css?v=v21" />
+    <link rel="stylesheet" href="css/web_style.css?v=v21" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">    
@@ -170,8 +170,8 @@
       .more-settings-summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;user-select:none}
       .more-settings-summary::-webkit-details-marker{display:none}
       .more-settings-summary h3{margin:0;flex:1}
-      .more-settings-chevron{margin-left:auto;color:var(--text-light);font-size:20px;transition:transform .18s ease}
-      .more-settings-card[open] .more-settings-chevron{transform:rotate(180deg)}
+      .more-settings-toggle-word{margin-left:auto;color:var(--text-light);font-size:12px;font-weight:500;min-width:34px;text-align:right}
+      .more-settings-card[open] .more-settings-toggle-word{color:var(--text)}
       .more-settings-card:not([open]) .settings-card-body{display:none}
       .account-delete-overlay{position:fixed;inset:0;z-index:1000001;background:rgba(16,24,40,.48);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:18px}
       .account-delete-dialog{position:relative;width:min(100%,440px);background:var(--bg-white,#fff);color:var(--text);border:1px solid var(--border-light);border-radius:16px;padding:28px;box-shadow:0 24px 70px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:12px}
@@ -583,9 +583,8 @@
                 <!-- More Settings: collapsed by default to keep Settings tidy -->
                 <details class="settings-card settings-card-full more-settings-card">
                     <summary class="settings-card-header more-settings-summary">
-                        <svg class="settings-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.7 2.94-.08-.02a1.7 1.7 0 0 0-1.75.5l-.05.06h-3.4l-.05-.06a1.7 1.7 0 0 0-1.75-.5l-.08.02-1.7-2.94.06-.06A1.7 1.7 0 0 0 9.6 15l-.08-.03v-3.4l.08-.03a1.7 1.7 0 0 0 .34-1.88l-.06-.06 1.7-2.94.08.02a1.7 1.7 0 0 0 1.75-.5l.05-.06h3.4l.05.06a1.7 1.7 0 0 0 1.75.5l.08-.02 1.7 2.94-.06.06A1.7 1.7 0 0 0 19.4 11.5l.08.03v3.4z"/></svg>
-                        <h3>More Settings</h3>
-                        <span class="more-settings-chevron" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+                        <h3>More</h3>
+                        <span class="more-settings-toggle-word" aria-hidden="true">Show</span>
                     </summary>
                     <div class="settings-card-body">
                         <div class="settings-actions">
@@ -803,7 +802,7 @@
                 <i class="fab fa-github"></i>
             </a>
         </div>
-        <a class="footer-privacy-link" href="privacy-policy.html" target="_blank" rel="noopener">Privacy &amp; data use</a>
+        <a class="footer-privacy-link" href="privacy-policy.html" target="_blank" rel="noopener">Privacy</a> &amp; <a class="footer-privacy-link" href="privacy-policy.html" target="_blank" rel="noopener">Privacy</a>
     </div>
 </div>
 
@@ -864,26 +863,26 @@
     </style>
     <!-- Scripts -->
     <!-- Application scripts -->
-    <script src="js/api.js?v=v20"></script>
-    <script src="js/auth.js?v=v20"></script>
-    <script src="js/app.js?v=v20"></script>
-    <script src="js/dashboard.js?v=v20"></script>
-    <script src="js/tenants.js?v=v20"></script>
-    <script src="js/properties.js?v=v20"></script>
-    <script src="js/payments.js?v=v20"></script>
-    <script src="js/settings.js?v=v20"></script>
-    <script src="js/notifications.js?v=v20"></script>
-    <script src="js/data-io.js?v=v20"></script>
-    <script src="js/utils.js?v=v20"></script>
-    <script src="js/components.js?v=v20"></script>
-    <script src="js/recycle.js?v=v20"></script>
-    <script src="js/mobile.js?v=v20"></script>
-    <script src="js/sample-data.js?v=v20"></script>
-    <script src="js/auth-ui.js?v=v20"></script>
-    <script src="js/web_script.js?v=v20"></script>
-    <script src="js/animation.js?v=v20"></script>
-    <script src="js/site-controller.js?v=v20"></script>
-    <script src="js/overlay-back-guard.js?v=v20"></script>
-    <script src="js/interaction-guard.js?v=v20"></script>
+    <script src="js/api.js?v=v21"></script>
+    <script src="js/auth.js?v=v21"></script>
+    <script src="js/app.js?v=v21"></script>
+    <script src="js/dashboard.js?v=v21"></script>
+    <script src="js/tenants.js?v=v21"></script>
+    <script src="js/properties.js?v=v21"></script>
+    <script src="js/payments.js?v=v21"></script>
+    <script src="js/settings.js?v=v21"></script>
+    <script src="js/notifications.js?v=v21"></script>
+    <script src="js/data-io.js?v=v21"></script>
+    <script src="js/utils.js?v=v21"></script>
+    <script src="js/components.js?v=v21"></script>
+    <script src="js/recycle.js?v=v21"></script>
+    <script src="js/mobile.js?v=v21"></script>
+    <script src="js/sample-data.js?v=v21"></script>
+    <script src="js/auth-ui.js?v=v21"></script>
+    <script src="js/web_script.js?v=v21"></script>
+    <script src="js/animation.js?v=v21"></script>
+    <script src="js/site-controller.js?v=v21"></script>
+    <script src="js/overlay-back-guard.js?v=v21"></script>
+    <script src="js/interaction-guard.js?v=v21"></script>
 </body>
 </html>
