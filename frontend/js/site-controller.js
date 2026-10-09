@@ -13,11 +13,11 @@ const SiteController = {
     ['appGoogleStartBtn','mobileGoogleStartBtn'].forEach(id => document.getElementById(id)?.addEventListener('click', startGoogle));
     document.getElementById('ownerProfilePhotoButton')?.addEventListener('click', () => document.getElementById('ownerProfilePhotoInput')?.click());
     document.getElementById('ownerProfilePhotoInput')?.addEventListener('change', e => this.handleProfilePhoto(e));
-    ['returnHomeBtn', 'returnHomeBtnMobile', 'returnHomeBtnAuth', 'returnHomeBtnMobileAuth'].forEach(id => document.getElementById(id)?.addEventListener('click', () => this.returnToHome()));
+    ['siteBrandHome','mobileWebsiteBrand','appBrandHome'].forEach(id => document.getElementById(id)?.addEventListener('click', e => { e.preventDefault(); this.returnToHome(); }));
     document.getElementById('heroTryDemo')?.addEventListener('click', e => { e.preventDefault(); this.startDemo(); });
     document.getElementById('myDashboardTrigger')?.addEventListener('click', e => { e.preventDefault(); this.unlockDashboard(); });
     document.getElementById('heroMyDashboard')?.addEventListener('click', e => { e.preventDefault(); this.unlockDashboard(); });
-    ['siteSignOutBtn','authLogoutBtn'].forEach(id => document.getElementById(id)?.addEventListener('click', () => Auth.logout()));
+    document.getElementById('siteSignOutBtn')?.addEventListener('click', () => Auth.logout());
     const profileModal = document.getElementById('ownerProfileModal');
     profileModal?.addEventListener('click', e => { if (e.target === profileModal && Auth.user?.profileComplete) this.closeAuthModal(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && profileModal?.classList.contains('active') && Auth.user?.profileComplete) this.closeAuthModal(); });
@@ -127,6 +127,12 @@ const SiteController = {
     this.unlockDashboard();
   },
   updateAuthUI(isAuth) {
+    const siteLogout = document.getElementById('siteSignOutBtn');
+    if (siteLogout) siteLogout.style.display = isAuth ? 'inline-flex' : 'none';
+    const heroDemo = document.getElementById('heroTryDemo');
+    const heroDash = document.getElementById('heroMyDashboard');
+    if (heroDemo) heroDemo.style.display = isAuth ? 'none' : 'inline-flex';
+    if (heroDash) heroDash.style.display = isAuth ? 'inline-flex' : 'none';
     const google = document.getElementById('googleStartBtn');
     const dashboard = document.getElementById('myDashboardTrigger');
     const heroDashboard = document.getElementById('heroMyDashboard');
@@ -135,8 +141,8 @@ const SiteController = {
     // The public site's topbar is for sign-in/sign-out only; Dashboard lives
     // in the hero CTA. Never show two competing dashboard buttons up top.
     if (dashboard) dashboard.style.display = 'none';
-    if (heroDashboard) { heroDashboard.style.display = isAuth ? 'inline-flex' : 'none'; heroDashboard.textContent = 'Dashboard'; }
-    if (logout) logout.style.display = isAuth ? 'inline-flex' : 'none';
+    if (heroDashboard) { heroDashboard.style.display = isAuth ? 'inline-flex' : 'none'; heroDashboard.textContent = 'Open Dashboard'; }
+    if (logout) logout.style.display = 'none';
     document.body.classList.toggle('returning-user', isAuth);
     const demo = document.getElementById('heroTryDemo');
     if (demo) demo.style.display = (!isAuth && !Auth.isDemoMode()) ? 'inline-flex' : 'none';

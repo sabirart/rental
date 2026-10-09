@@ -124,7 +124,7 @@ const Dashboard = {
             const statusClass = payment.status === 'paid' ? 'success' : payment.status === 'partial' ? 'warning' : 'danger';
             
             html += `
-                <div class="recent-payment-item">
+                <button type="button" class="recent-payment-item" data-payment-id="${escapeHTML(payment.id)}" aria-label="Open payment details">
                     <div class="recent-payment-info">
                         <span class="recent-payment-name">${tenantName}</span>
                         <span class="recent-payment-date">${formatDate(payment.created_at)}</span>
@@ -133,11 +133,14 @@ const Dashboard = {
                         <span class="recent-payment-amount">${formatCurrency(amount)}</span>
                         <span class="badge badge-${statusClass}">${escapeHTML(payment.status)}</span>
                     </div>
-                </div>
+                </button>
             `;
         });
         
         container.innerHTML = html;
+        container.querySelectorAll('[data-payment-id]').forEach(item => item.addEventListener('click', () => {
+            if (typeof Payments !== 'undefined') Payments.editPayment(item.dataset.paymentId);
+        }));
     }
 };
 

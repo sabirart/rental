@@ -437,3 +437,13 @@
   #siteOverlay .social-footer-icons { gap: 14px; }
   #siteOverlay .footer-privacy-link { font-size: 11px; }
 }
+
+
+/* Header controls and reliable mobile brand navigation */
+#siteOverlay .site-topbar-brand{display:inline-flex;align-items:center;text-decoration:none;cursor:pointer}
+#siteOverlay .site-topbar-brand:hover{text-decoration:none;color:#111}
+#siteOverlay .site-topbar-actions #siteSignOutBtn{white-space:nowrap}
+.mobile-topbar-title{display:block!important;text-decoration:none;white-space:nowrap;flex-shrink:0;cursor:pointer;font-size:1.08rem!important}
+.mobile-topbar-title:hover{text-decoration:none}
+@media(max-width:768px){.mobile-topbar{gap:10px;padding-left:14px;padding-right:14px}.mobile-topbar-title{max-width:44vw;overflow:hidden;text-overflow:ellipsis}.app-topbar-left{max-width:none!important;min-width:0}.app-topbar-google{max-width:150px}.app-topbar-google span{white-space:nowrap}}
+#siteOverlay .hero-cta #heroTryDemo[style*="display: none"],#siteOverlay .hero-cta #heroMyDashboard[style*="display: none"]{display:none!important}

@@ -29,10 +29,11 @@ const DashboardAuthBar = {
     ['authUserProfileTrigger','mobileAuthProfileBtn'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display=authenticated?'inline-flex':'none'; });
     this._setAvatar(document.getElementById('authUserAvatar'), user);
     this._setAvatar(document.getElementById('mobileAuthUserAvatar'), user);
-    ['returnHomeBtn','returnHomeBtnMobile'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display=authenticated?'none':'inline-flex'; });
-    ['returnHomeBtnAuth','returnHomeBtnMobileAuth'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display=authenticated?'inline-flex':'none'; });
+    ['returnHomeBtn','returnHomeBtnMobile','returnHomeBtnAuth','returnHomeBtnMobileAuth'].forEach(id => { const el=document.getElementById(id); if(el) el.remove(); });
+    
     const profile = document.getElementById('authProfileBtn'); if (profile) profile.style.display='none';
     const logout = document.getElementById('authLogoutBtn'); if (logout) logout.style.display='none';
+    const siteLogout = document.getElementById('siteSignOutBtn'); if (siteLogout) siteLogout.style.display = authenticated ? 'inline-flex' : 'none';
   }
 };
 document.addEventListener('DOMContentLoaded', () => DashboardAuthBar.init());

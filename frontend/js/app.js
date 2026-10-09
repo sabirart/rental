@@ -289,12 +289,65 @@ const App = {
         };
         modal.addEventListener('click', overlayHandler);
         this._eventListeners.push({ target: modal, event: 'click', handler: overlayHandler });
+
+        // On edit overlays, skip the save pipeline when the form is unchanged.
+        modal.addEventListener('submit', (event) => {
+            const title = document.getElementById('modalTitle')?.textContent || '';
+            if (!/^\s*(edit|update)\b/i.test(title)) return;
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement) || !form.dataset.modalBaseline) return;
+            const current = this._modalFormSnapshot(form);
+            if (current === form.dataset.modalBaseline) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                this.closeModal();
+            }
+        }, true);
+
+        // Drag a mobile bottom sheet downward to dismiss it.
+        let startY = 0, lastY = 0, dragging = false;
+        const content = modal.querySelector('.modal-content');
+        const beginDrag = (event) => {
+            if (window.innerWidth > 768 || !modal.classList.contains('active')) return;
+            if (event.target.closest('input,textarea,select,button,a,[contenteditable="true"]') && !event.target.closest('.modal-drag-handle,.modal-header')) return;
+            const point = event.touches ? event.touches[0] : event;
+            startY = lastY = point.clientY; dragging = true;
+            if (content) content.style.transition = 'none';
+        };
+        const moveDrag = (event) => {
+            if (!dragging || !content) return;
+            const point = event.touches ? event.touches[0] : event;
+            lastY = point.clientY;
+            const delta = Math.max(0, lastY - startY);
+            if (delta > 0) { content.style.transform = `translateY(${delta}px)`; if (event.cancelable) event.preventDefault(); }
+        };
+        const endDrag = () => {
+            if (!dragging) return;
+            dragging = false;
+            if (content) {
+                content.style.transition = 'transform .22s ease';
+                if (lastY - startY > 100) this.closeModal();
+                content.style.transform = '';
+                window.setTimeout(() => { if (content) content.style.removeProperty('transition'); }, 240);
+            }
+        };
+        const dragSurface = modal.querySelector('.modal-header') || modal.querySelector('.modal-drag-handle') || content;
+        dragSurface?.addEventListener('touchstart', beginDrag, { passive: true });
+        dragSurface?.addEventListener('touchmove', moveDrag, { passive: false });
+        dragSurface?.addEventListener('touchend', endDrag, { passive: true });
     },
     
     openModal(title, content) {
         document.getElementById('modalTitle').textContent = title;
         document.getElementById('modalBody').innerHTML = content;
         document.getElementById('modal').classList.add('active');
+        const modalForm = document.querySelector('#modalBody form');
+        if (modalForm) {
+            delete modalForm.dataset.modalBaseline;
+            window.setTimeout(() => {
+                if (modalForm.isConnected) modalForm.dataset.modalBaseline = this._modalFormSnapshot(modalForm);
+            }, 0);
+        }
         document.body.style.overflow = 'hidden';
         // Reset scroll to top
         const modalBody = document.getElementById('modalBody');
@@ -303,6 +356,15 @@ const App = {
         }
     },
     
+    _modalFormSnapshot(form) {
+        return JSON.stringify(Array.from(form.elements || []).filter(el => el.name || el.id).map(el => ({
+            key: el.name || el.id,
+            type: el.type || el.tagName,
+            value: el.type === 'checkbox' || el.type === 'radio' ? !!el.checked : (el.value ?? ''),
+            files: el.type === 'file' ? Array.from(el.files || []).map(file => `${file.name}:${file.size}:${file.lastModified}`) : undefined
+        })));
+    },
+
     closeModal() {
         const modal = document.getElementById('modal');
         if (modal && modal._paymentNavigationCleanup) {
