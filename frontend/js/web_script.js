@@ -260,25 +260,11 @@
 // Both paths end up calling Auth.googleLogin(), which sends whichever token type
 // it received to the same backend endpoint.
 async function refreshGoogleDriveAccess() {
-    if (typeof google === 'undefined' || !google.accounts?.oauth2) return;
-    return new Promise((resolve) => {
-        try {
-            const client = google.accounts.oauth2.initTokenClient({
-                client_id: '662426431112-p5fh467egk9h20cqpqtl5eve2kre7fkk.apps.googleusercontent.com',
-                scope: 'email profile https://www.googleapis.com/auth/drive.file',
-                prompt: '',
-                callback: async (response) => {
-                    if (response?.access_token) {
-                        try { await Auth.setGoogleDriveToken(response.access_token); } catch (_) {}
-                    }
-                    resolve();
-                }
-            });
-            client.requestAccessToken();
-        } catch (_) { resolve(); }
-    });
+    // Drive authorization is completed by the server-side Google OAuth flow.
+    // The browser never requests a Drive token directly, which avoids the
+    // origin_mismatch failure from the GIS token popup.
+    return true;
 }
-
 window.refreshGoogleDriveAccess = refreshGoogleDriveAccess;
 
 async function handleGoogleLogin() {
@@ -289,54 +275,14 @@ async function handleGoogleLogin() {
             closeModal(registerModal);
             SiteController.unlockDashboard();
         } catch (error) {
-            console.error('Native Google login error:', error);
             Components.showError('Google Sign-In Failed', error.message || 'Google sign-in failed. Please try again.');
         }
         return;
     }
-
-    try {
-        // Load Google SDK
-        if (typeof google === 'undefined') {
-            await new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://accounts.google.com/gsi/client';
-                script.async = true;
-                script.defer = true;
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
-        }
-
-        // Use the Google Identity Services popup
-        const client = google.accounts.oauth2.initTokenClient({
-            // FIX: was a different Client ID than backend's .env GOOGLE_CLIENT_ID —
-            // they must match, since Google validates the requesting origin per client ID.
-            client_id: '662426431112-p5fh467egk9h20cqpqtl5eve2kre7fkk.apps.googleusercontent.com',
-            scope: 'email profile https://www.googleapis.com/auth/drive.file',
-            callback: async (response) => {
-                if (response.error) {
-                    Components.showError('Google Sign-In Failed', response.error || 'Google sign-in failed. Please try again.');
-                    return;
-                }
-                
-                try {
-                    const result = await Auth.googleLogin({ accessToken: response.access_token });
-                    closeModal(loginModal);
-                    closeModal(registerModal);
-                    SiteController.unlockDashboard();
-                } catch (error) {
-                    Components.showError('Login Failed', error.message || 'Unable to sign in. Please try again.');
-                }
-            }
-        });
-
-        client.requestAccessToken();
-    } catch (error) {
-        console.error('Google login error:', error);
-        Components.showError('Google Sign-In Unavailable', 'Google sign-in could not be initialized. Please try again.');
-    }
+    // Server-side OAuth: Google validates the registered redirect URI rather
+    // than the browser JavaScript origin. After callback, the server creates
+    // the Rental Manager session and Drive connection cookies.
+    window.location.href = `${API.baseURL}/auth/google/start`;
 }
 
     // ===== CLOSE MODALS =====
@@ -470,4 +416,72 @@ async function handleGoogleLogin() {
         closeModal(demoModal);
     });
 
+})();
+
+// Restore a server-side Google session after OAuth callback/reload and offer
+// an explicit choice when this Google account already has saved Rental Manager data.
+(async function restoreGoogleSession(){
+  const params = new URLSearchParams(window.location.search);
+  const authResult = params.get('google_auth');
+  try {
+    if (authResult === 'error') {
+      const msg = params.get('message') || 'Google sign-in failed';
+      window.Components?.showError?.('Google Sign-In Failed', msg);
+      history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+    let restoredUser = Auth.isAuthenticated;
+    if (!Auth.isAuthenticated) {
+      const response = await fetch(`${API.baseURL}/auth/me`, { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data?.user) {
+          Auth.setUser(data.data.user, null);
+          SiteController.unlockDashboard?.();
+          restoredUser = true;
+        }
+      }
+    }
+    if (authResult === 'success' && restoredUser) {
+      try {
+        const statusResponse = await fetch(`${API.baseURL}/auth/backup/status`, { credentials: 'include' });
+        const statusPayload = await statusResponse.json();
+        if (statusResponse.ok && statusPayload.success) {
+          const status = statusPayload.data || {};
+          if (status.hasExistingData || status.backups?.length) {
+            if (status.backups?.length) {
+              const restoreLatest = window.confirm('A backup was found for this Google account. Select OK to restore the latest backup, or Cancel to continue with the current saved data.');
+              if (restoreLatest) {
+                const result = await fetch(`${API.baseURL}/auth/backup/restore`, {
+                  method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ backupId: status.backups[0].id })
+                });
+                const payload = await result.json();
+                if (!result.ok || !payload.success) throw new Error(payload.error || payload.message || 'Backup restore failed');
+                window.Components?.showSuccess?.('Latest backup restored successfully');
+              } else if (window.confirm('Start a new empty Rental Manager account? Your current data will first be preserved as a backup.')) {
+                const result = await fetch(`${API.baseURL}/auth/backup/new-account`, { method: 'POST', credentials: 'include' });
+                const payload = await result.json();
+                if (!result.ok || !payload.success) throw new Error(payload.error || payload.message || 'Could not start a new account');
+              }
+            } else if (!window.confirm('Saved Rental Manager data was found for this Google account. Select OK to continue with it, or Cancel to start a new empty account.')) {
+              if (window.confirm('Start a new empty account? Your current data will first be preserved as a backup.')) {
+                const result = await fetch(`${API.baseURL}/auth/backup/new-account`, { method: 'POST', credentials: 'include' });
+                const payload = await result.json();
+                if (!result.ok || !payload.success) throw new Error(payload.error || payload.message || 'Could not start a new account');
+              }
+            }
+          } else {
+            window.Components?.showSuccess?.('No previous backup was found for this Google account. A new account is ready.');
+          }
+          if (window.App?.loadData) await App.loadData({ silent: true });
+          if (window.App?.renderCurrentView) App.renderCurrentView();
+        }
+      } catch (backupError) {
+        console.error('Backup choice failed:', backupError);
+        window.Components?.showError?.('Backup Setup', backupError.message || 'Could not check or restore your backup. Your saved data has not been intentionally cleared.');
+      }
+    }
+  } catch (_) {}
+  if (params.has('google_auth')) history.replaceState({}, document.title, window.location.pathname);
 })();

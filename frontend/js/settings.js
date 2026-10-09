@@ -284,6 +284,8 @@ const Settings = {
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="manage">Manage Account</button>
+                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="backup">Backup Now</button>
+                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="restore">Restore Backup</button>
                         <button type="button" class="btn btn-sm btn-danger" data-settings-account-action="logout">Logout</button>
                     </div>
                 </div>
@@ -320,6 +322,40 @@ const Settings = {
                                 ManageAccount.open();
                             } else {
                                 SiteController.openAuthModal('manageAccount');
+                            }
+                        } else if (action === 'backup') {
+                            button.disabled = true;
+                            const oldLabel = button.textContent;
+                            button.textContent = 'Creating backup…';
+                            try {
+                                const response = await fetch(`${API.baseURL}/auth/backup`, { method: 'POST', credentials: 'include' });
+                                const data = await response.json();
+                                if (!response.ok || !data.success) throw new Error(data.error || data.message || 'Backup failed');
+                                showNotification('Backup created successfully', 'success');
+                            } finally {
+                                button.disabled = false;
+                                button.textContent = oldLabel;
+                            }
+                        } else if (action === 'restore') {
+                            button.disabled = true;
+                            try {
+                                const statusResponse = await fetch(`${API.baseURL}/auth/backup/status`, { credentials: 'include' });
+                                const status = await statusResponse.json();
+                                if (!statusResponse.ok || !status.success) throw new Error(status.error || status.message || 'Could not check backups');
+                                if (!status.data?.backups?.length) throw new Error('No saved backup snapshots were found yet. Use Backup Now first.');
+                                if (window.confirm('Restore the latest backup? This replaces the current Rental Manager data.')) {
+                                    const response = await fetch(`${API.baseURL}/auth/backup/restore`, {
+                                        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ backupId: status.data.backups[0].id })
+                                    });
+                                    const data = await response.json();
+                                    if (!response.ok || !data.success) throw new Error(data.error || data.message || 'Restore failed');
+                                    await App.loadData();
+                                    App.renderCurrentView();
+                                    showNotification('Backup restored successfully', 'success');
+                                }
+                            } finally {
+                                button.disabled = false;
                             }
                         } else if (action === 'logout') {
                             button.disabled = true;
@@ -359,13 +395,22 @@ const Settings = {
     },
 
     exportData() {
+        const preferenceKeys = ['ownerInfo', 'darkMode', 'language', 'selectedLanguage', 'monthlyResetDay', 'notificationsEnabled', 'lastResetMonth', 'lastResetYear'];
+        const preferences = {};
+        preferenceKeys.forEach(key => {
+            const value = localStorage.getItem(key);
+            if (value !== null) preferences[key] = value;
+        });
         const data = {
+            schemaVersion: 3,
             tenants: App.state.tenants,
             properties: App.state.properties,
             payments: App.state.payments,
+            recycleBin: JSON.parse(localStorage.getItem('recycle_bin_cache') || '[]'),
             owner: JSON.parse(localStorage.getItem('ownerInfo') || '{}'),
+            preferences,
             exportedAt: new Date().toISOString(),
-            version: '1.0.0'
+            version: '3.0.0'
         };
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

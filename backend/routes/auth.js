@@ -19,6 +19,8 @@ const validate = (req, res, next) => {
 };
 
 // Public routes
+router.get('/google/start', authController.googleStart);
+router.get('/google/callback', authController.googleCallback);
 router.post('/register', [
     body('name').notEmpty().withMessage('Name is required').trim().escape(),
     body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
@@ -71,6 +73,10 @@ router.post('/reset-password', [
 router.get('/me', authMiddleware.authenticate, authController.me);
 router.post('/google-drive-token', authMiddleware.authenticate, authController.setGoogleDriveToken);
 router.post('/migrate-legacy', authMiddleware.authenticate, authController.migrateLegacy);
+router.get('/backup/status', authMiddleware.authenticate, authController.backupStatus);
+router.post('/backup', authMiddleware.authenticate, authController.backup);
+router.post('/backup/restore', authMiddleware.authenticate, authController.restoreBackup);
+router.post('/backup/new-account', authMiddleware.authenticate, authController.startFreshAccount);
 router.get('/google-drive/status', authMiddleware.authenticate, async (req, res, next) => { try { res.json({ success: true, data: await getStatus(req) }); } catch (e) { next(e); } });
 router.put('/profile', authMiddleware.authenticate, [
     body('name').optional().trim().escape(),
