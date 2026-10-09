@@ -1,12 +1,9 @@
-const { OAuth2Client } = require('google-auth-library');
 const { google } = require('googleapis');
 const { AppError } = require('../middleware/errorHandler');
 const crypto = require('crypto');
-const { setDriveCookies, clearDriveCookie, ensureUserData, getStatus, getDriveToken } = require('../services/googleDrive');
+const { clearDriveCookie, ensureUserData, getDriveToken } = require('../services/googleDrive');
 const Drive = require('../services/driveStore');
 const Auth = require('../middleware/auth');
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const unsupported = () => { throw new AppError('Google Sign-In is required because Rental Manager data is stored in your Google Drive.', 400); };
 
 // Render dashboard values are sometimes pasted as KEY=value instead of value only.
 // Normalize those values so Express never treats an absolute URL as a relative route.
@@ -34,19 +31,17 @@ function googleRedirectUrl(req) {
   return configuredUrl('GOOGLE_REDIRECT_URI', fallback, '/api/auth/google/callback');
 }
 const authController = {
-  async register(req,res,next){try{unsupported();}catch(e){next(e);}},
-  async verifyEmail(req,res,next){try{unsupported();}catch(e){next(e);}},
-  async resendVerification(req,res,next){try{unsupported();}catch(e){next(e);}},
-  async login(req,res,next){try{unsupported();}catch(e){next(e);}},
-  async forgotPassword(req,res,next){try{unsupported();}catch(e){next(e);}},
-  async resetPassword(req,res,next){try{unsupported();}catch(e){next(e);}},
   async googleStart(req,res,next){
     try {
       const oauth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, googleRedirectUrl(req));
       const state = crypto.randomBytes(24).toString('hex');
       const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
       res.setHeader('Set-Cookie', `google_oauth_state=${state}; Max-Age=600; Path=/; HttpOnly; SameSite=Lax${secure}`);
-      const url = oauth.generateAuthUrl({ access_type:'offline', prompt:'consent', include_granted_scopes:true, scope:['openid','email','profile','https://www.googleapis.com/auth/drive.file'], state });
+      const cookieHeader = req.headers.cookie || '';
+      const hasRefreshCookie = /(?:^|;\s*)google_drive_refresh_token=/.test(cookieHeader);
+      const hasDriveOwnerCookie = /(?:^|;\s*)google_drive_owner=/.test(cookieHeader);
+      const prompt = hasRefreshCookie && hasDriveOwnerCookie && req.query.forceConsent !== '1' ? 'select_account' : 'consent select_account';
+      const url = oauth.generateAuthUrl({ access_type:'offline', prompt, include_granted_scopes:true, scope:['openid','email','profile','https://www.googleapis.com/auth/drive.file'], state });
       res.redirect(url);
     } catch(e) { next(e); }
   },
@@ -60,54 +55,81 @@ const authController = {
       const info = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers:{Authorization:`Bearer ${tokens.access_token}`} });
       if(!info.ok) throw new AppError('Unable to read Google account',401);
       const payload=await info.json();
-      const user={id:`google:${payload.sub}`,name:payload.name||payload.email.split('@')[0],email:payload.email,profilePic:payload.picture||null,googleId:payload.sub,isVerified:true,hasPassword:false};
-      const session=Auth.createSession(user);
+      if (payload.email_verified === false) throw new AppError('Please use a verified Google account email.', 403);
+      const user={id:`google:${payload.sub}`,name:payload.name||payload.email.split('@')[0],email:payload.email,profilePic:payload.picture||null,googleId:payload.sub,isVerified:true};
       const secure=process.env.NODE_ENV==='production'?'; Secure':'';
+      const existingDriveOwner = cookies.google_drive_owner || '';
+      if (!tokens.refresh_token && existingDriveOwner !== user.id) {
+        const expiredCookies = [
+          `rental_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`,
+          `google_drive_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`,
+          `google_drive_refresh_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`,
+          `google_drive_owner=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`,
+          `google_oauth_state=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`
+        ];
+        res.setHeader('Set-Cookie',expiredCookies);
+        return res.redirect(`${frontendBaseUrl(req)}/?google_auth=error&message=${encodeURIComponent('Please continue with Google again to approve Drive access for this account.')}`);
+      }
+      const session=Auth.createSession(user);
       const cookiesOut=[`rental_session=${encodeURIComponent(session)}; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax${secure}`,`google_oauth_state=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`];
-      if(tokens.access_token) cookiesOut.push(`google_drive_token=${encodeURIComponent(tokens.access_token)}; Max-Age=${Math.max(60,Math.floor((tokens.expiry_date-Date.now())/1000)-60)}; Path=/; HttpOnly; SameSite=Lax${secure}`);
-      if(tokens.refresh_token) cookiesOut.push(`google_drive_refresh_token=${encodeURIComponent(tokens.refresh_token)}; Max-Age=2592000; Path=/; HttpOnly; SameSite=Lax${secure}`);
+      const accessMaxAge = tokens.expiry_date ? Math.max(60, Math.floor((tokens.expiry_date-Date.now())/1000)-60) : 3500;
+      if(tokens.access_token) cookiesOut.push(`google_drive_token=${encodeURIComponent(tokens.access_token)}; Max-Age=${accessMaxAge}; Path=/; HttpOnly; SameSite=Lax${secure}`);
+      if(tokens.refresh_token) { cookiesOut.push(`google_drive_refresh_token=${encodeURIComponent(tokens.refresh_token)}; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax${secure}`); cookiesOut.push(`google_drive_owner=${encodeURIComponent(user.id)}; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax${secure}`); }
       res.setHeader('Set-Cookie',cookiesOut);
+      if (!tokens.access_token) throw new AppError('Google did not grant Google Drive access. Please try again and approve the requested permission.', 403);
+      await ensureUserData(user.id, tokens.access_token, user);
       if (process.env.LEGACY_DATABASE_URL || process.env.LEGACY_POSTGRES_URL) { try { const { migrateCurrentUserFromLegacy } = require('../services/legacyMigration'); await migrateCurrentUserFromLegacy(user.id,user.email,user.googleId,tokens.access_token); } catch (migrationError) { console.warn('Legacy migration skipped:', migrationError.message); } }
       res.redirect(`${frontendBaseUrl(req)}/?google_auth=success`);
     } catch(e) { console.error('Google OAuth callback error:',e); res.redirect(`${frontendBaseUrl(req)}/?google_auth=error&message=${encodeURIComponent(e.message)}`); }
   },
-  async googleLogin(req,res,next){
+  async exportBackup(req,res,next){
     try {
-      const { token: googleToken, idToken } = req.body || {};
-      if(!googleToken&&!idToken) throw new AppError('Google token is required',400);
-      let email,name,picture,googleId;
-      if(idToken){
-        const ticket=await googleClient.verifyIdToken({idToken,audience:process.env.GOOGLE_CLIENT_ID});
-        const payload=ticket.getPayload(); if(!payload) throw new AppError('Invalid Google ID token',401);
-        ({email,name,picture,sub:googleId}=payload);
-      } else {
-        const r=await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(googleToken)}`);
-        if(!r.ok) throw new AppError('Invalid or expired Google token',401);
-        const payload=await r.json(); ({email,name,picture,sub:googleId}=payload);
-      }
-      if(!email||!googleId) throw new AppError('Could not retrieve Google account details',400);
-      const user={id:`google:${googleId}`,name:name||email.split('@')[0],email,profilePic:picture||null,googleId,isVerified:true,hasPassword:false};
-      const session=Auth.createSession(user);
-      const secure=process.env.NODE_ENV==='production'?'; Secure':'';
-      res.setHeader('Set-Cookie',`rental_session=${encodeURIComponent(session)}; Max-Age=604800; Path=/; HttpOnly; SameSite=Lax${secure}`);
-      // IMPORTANT: Google sign-in and Google Drive authorization are separate.
-      // The web login token only has identity scopes. Do not try to use it as a
-      // Drive token here; Drive authorization happens through /google-drive-token.
-      // This prevents Google from blocking ordinary sign-in because the app also
-      // requests Drive access.
-      res.json({success:true,data:{user},message:'Google login successful'});
-    } catch(error){console.error('Google login error:',error);next(new AppError('Google authentication failed: '+error.message,401));}
+      const data = await Drive.getData();
+      const date = new Date().toISOString().slice(0,10);
+      res.setHeader('Content-Type','application/json; charset=utf-8');
+      res.setHeader('Content-Disposition',`attachment; filename="rental-manager-backup-${date}.json"`);
+      res.json({ ...data, schemaVersion: 3, backup: { source:'Rental Manager', format:'rental-manager-backup', exportedAt:new Date().toISOString() } });
+    } catch(e) { next(e); }
   },
-  async setGoogleDriveToken(req,res,next){try{const {token}=req.body||{};if(!token)throw new AppError('Google Drive token is required',400);const previous=req.headers.cookie||'';req.headers.cookie=`google_drive_token=${encodeURIComponent(token)}`;const status=await getStatus(req);req.headers.cookie=previous;if(!status.connected)throw new AppError('Google Drive authorization failed',401);setDriveCookie(res,token);await ensureUserData(req.userId,token);try { const migrated=await migrateCurrentUserFromLegacy(req.userId,req.userEmail,req.user?.googleId,token); if(migrated.migrated) console.log('Legacy data migrated to Google Drive:', migrated.counts); } catch(e) { console.warn('Legacy migration skipped:', e.message); }res.json({success:true,data:{connected:true},message:'Google Drive connected'});}catch(e){next(e);}},
-  async migrateLegacy(req,res,next){try{const token=getDriveToken(req);if(!token)throw new AppError('Google Drive access is required',401);const result=await migrateCurrentUserFromLegacy(req.userId,req.userEmail,req.user?.googleId,token);res.json({success:true,data:result,message:result.migrated?'Legacy data migrated to Google Drive':'No migration performed'});}catch(e){next(e);}},
+  async importBackup(req,res,next){
+    try {
+      const incoming = req.body;
+      if (!incoming || typeof incoming !== 'object' || !Array.isArray(incoming.properties) || !Array.isArray(incoming.tenants) || !Array.isArray(incoming.payments)) {
+        throw new AppError('This file is not a valid Rental Manager backup.',400);
+      }
+      const counts = await Drive.mutate(async data => {
+        const hasCurrentData = ['properties','rooms','tenants','payments','recycleBin'].some(k => Array.isArray(data[k]) && data[k].length);
+        if (hasCurrentData) { await Drive.createBackupSnapshot(); data._autoBackupDate = new Date().toISOString().slice(0,10); }
+        const owner = { id:req.userId, name:data.user?.name || req.user?.name || '', email:req.userEmail, profilePic:data.user?.profilePic || req.user?.profilePic || null, profileComplete:true };
+        const importedRooms = Array.isArray(incoming.rooms) ? incoming.rooms.map(x=>({...x})) : incoming.properties.flatMap(property => {
+          const nested = Array.isArray(property.rooms) ? property.rooms : [];
+          const count = Math.max(0, Number(property.total_rooms || property.totalRooms || nested.length || 0));
+          const tenants = incoming.tenants.filter(t=>t.property_id===property.id && t.status==='active');
+          return Array.from({length:count},(_,index)=>{const number=index+1;const room=nested.find(r=>Number(r.room_number)===number)||{};const tenant=tenants.find(t=>Number(t.room_number)===number);return {id:room.id||`${property.id}-room-${number}`,property_id:property.id,room_number:number,room_name:room.room_name||`Room ${number}`,status:tenant?'occupied':(room.status==='maintenance'?'maintenance':'available'),tenant_id:tenant?.id||null,rent_amount:Number(room.rent_amount ?? property.base_rent ?? property.baseRent ?? 0)};});
+        });
+        const next = {
+          schemaVersion:3, user:owner,
+          properties:incoming.properties.map(x=>({...x,user_id:req.userId})),
+          rooms:importedRooms,
+          tenants:incoming.tenants.map(x=>({...x,user_id:req.userId})),
+          payments:incoming.payments.map(x=>({...x,user_id:req.userId})),
+          recycleBin:Array.isArray(incoming.recycleBin)?incoming.recycleBin.map(x=>({...x,user_id:req.userId})):[],
+          settings:{...(incoming.settings&&typeof incoming.settings==='object'?incoming.settings:{}),user_id:req.userId},
+          _autoBackupDate:new Date().toISOString().slice(0,10)
+        };
+        Object.keys(data).forEach(k=>delete data[k]);
+        Object.assign(data,next);
+        return {properties:data.properties.length,rooms:data.rooms.length,tenants:data.tenants.length,payments:data.payments.length,recycleBin:data.recycleBin.length};
+      });
+      res.json({success:true,data:counts,message:'Backup imported. This Google account now owns the imported records.'});
+    } catch(e) { next(e); }
+  },
   async backup(req,res,next){try{const token=await getDriveToken(req,res);if(!token)throw new AppError('Google Drive is not connected',401);await ensureUserData(req.userId,token);await Drive.saveData();const snapshot=await Drive.createBackupSnapshot();res.json({success:true,data:{...snapshot,updatedAt:new Date().toISOString()},message:'Backup created successfully'});}catch(e){next(e);}},
   async backupStatus(req,res,next){try{const token=await getDriveToken(req,res);if(!token)throw new AppError('Google Drive is not connected',401);res.json({success:true,data:await Drive.backupStatus()});}catch(e){next(e);}},
   async restoreBackup(req,res,next){try{const token=await getDriveToken(req,res);if(!token)throw new AppError('Google Drive is not connected',401);const result=await Drive.restoreBackup(req.body?.backupId||null);res.json({success:true,data:result,message:'Backup restored successfully'});}catch(e){next(e);}},
   async startFreshAccount(req,res,next){try{const token=await getDriveToken(req,res);if(!token)throw new AppError('Google Drive is not connected',401);const result=await Drive.startFreshAccount();res.json({success:true,data:result,message:'New empty account created. Existing backup snapshots were preserved.'});}catch(e){next(e);}},
   async logout(req,res,next){try{Auth.clearCookieHeader(res);clearDriveCookie(res);res.json({success:true,message:'Logged out successfully'});}catch(e){next(e);}},
-  async me(req,res,next){try{const d=await Drive.getData();const u=d.user||{};res.json({success:true,data:{user:{id:req.userId,name:u.name||req.user?.name,email:req.userEmail,profilePic:u.profilePic||req.user?.profilePic||null,googleId:req.user?.googleId||null,isVerified:true,hasPassword:false}}});}catch(e){next(e);}},
-  async updateProfile(req,res,next){try{const {name,profilePic}=req.body||{};const updated=await Drive.mutate(d=>{d.user=d.user||{};d.user.id=req.userId;d.user.name=name||d.user.name||req.user.name;d.user.email=req.userEmail;d.user.profilePic=profilePic!==undefined?profilePic:(d.user.profilePic||req.user.profilePic||null);return d.user;});res.json({success:true,data:{user:{id:req.userId,name:updated.name,email:req.userEmail,profilePic:updated.profilePic||null,googleId:req.user?.googleId||null,isVerified:true,hasPassword:false}},message:'Profile updated successfully'});}catch(e){next(e);}},
-  async changePassword(req,res,next){try{throw new AppError('Password login is disabled. Your account is secured by Google Sign-In.',400);}catch(e){next(e);}},
-  async deleteAccount(req,res,next){try{throw new AppError('Account deletion is managed through Google Sign-In and Google Drive.',400);}catch(e){next(e);}}
+  async me(req,res,next){try{const d=await Drive.getData();const u=d.user||{};res.json({success:true,data:{user:{id:req.userId,name:u.name||req.user?.name,email:req.userEmail,profilePic:u.profilePic||req.user?.profilePic||null,profileComplete:!!u.profileComplete,googleId:req.user?.googleId||null,isVerified:true}}});}catch(e){next(e);}},
+  async updateProfile(req,res,next){try{const {name,profilePic,profileComplete}=req.body||{};const updated=await Drive.mutate(d=>{d.user=d.user||{};d.user.id=req.userId;d.user.name=String(name||d.user.name||req.user.name||'').trim();d.user.email=req.userEmail;d.user.profilePic=profilePic!==undefined?profilePic:(d.user.profilePic||req.user.profilePic||null);if(profileComplete===true)d.user.profileComplete=true;return d.user;});res.json({success:true,data:{user:{id:req.userId,name:updated.name,email:req.userEmail,profilePic:updated.profilePic||null,profileComplete:!!updated.profileComplete,googleId:req.user?.googleId||null,isVerified:true}},message:'Owner profile saved successfully'});}catch(e){next(e);}},
 };
 module.exports=authController;

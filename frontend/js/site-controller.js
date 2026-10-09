@@ -1,181 +1,114 @@
-// js/site-controller.js
-// Orchestrates the two top-level states of the single-page app:
-//   1. Site overlay (#siteOverlay) - marketing site, shown by default to
-//      every visitor. A returning, already-authenticated visitor sees the
-//      exact same overlay, just with Login / Sign Up / Try Demo swapped
-//      out for a single "My Dashboard" button - there is no separate
-//      welcome screen.
-//   2. Dashboard    (#dashboardRoot) - the actual app, unlocked via
-//                                       Login / Sign Up / Get Demo / My Dashboard
-//
-// Auth modals (#authModalsRoot) can be opened on top of either the site
-// overlay or the dashboard.
-
+// Google-only entry and owner profile setup.
 const SiteController = {
-    _Unlocked: false,
-
-    init() {
-        Auth.init();
-
-        this._applyAuthState();
-        this._wireReturningUserButtons();
-
-        // Support the existing ?show=login / ?show=register deep link,
-        // e.g. from an old bookmark or shared link.
-        const params = new URLSearchParams(window.location.search);
-        const show = params.get('show');
-        if (show === 'login' || show === 'register') {
-            setTimeout(() => this.openAuthModal(show), 400);
-        }
-    },
-
-    // Toggles the `returning-user` class on <body>, which is what swaps
-    // Login/Sign Up/Try Demo for a single "My Dashboard" button on the
-    // (unchanged) site overlay. Safe to call again after login/logout.
-    _applyAuthState() {
-        const isAuth = !!Auth.isAuthenticated;
-        document.body.classList.toggle('returning-user', isAuth);
-        this._updateButtons(isAuth);
-    },
-
-    _updateButtons(isAuthenticated) {
-        // Topbar buttons - Login and Sign Up
-        const loginBtn = document.getElementById('loginTrigger');
-        const signupBtn = document.getElementById('registerTrigger');
-        const logoutBtn = document.getElementById('myDashboardTrigger');
-        
-        if (isAuthenticated) {
-            // Hide Login & Sign Up, show Logout
-            if (loginBtn) loginBtn.style.display = 'none';
-            if (signupBtn) signupBtn.style.display = 'none';
-            if (logoutBtn) {
-                logoutBtn.style.display = 'inline-flex';
-                logoutBtn.textContent = 'Logout';
-                logoutBtn.className = 'btn btn-outline btn-sm';
-                // Remove old listeners
-                const newBtn = logoutBtn.cloneNode(true);
-                logoutBtn.parentNode.replaceChild(newBtn, logoutBtn);
-                newBtn.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    await Auth.logout();
-                });
-            }
-        } else {
-            // Show Login & Sign Up, hide Logout
-            if (loginBtn) loginBtn.style.display = 'inline-flex';
-            if (signupBtn) signupBtn.style.display = 'inline-flex';
-            if (logoutBtn) {
-                logoutBtn.style.display = 'none';
-                logoutBtn.textContent = 'My Dashboard';
-                logoutBtn.className = 'btn btn-primary btn-sm';
-            }
-        }
-        
-        // Hero section - Try Demo button
-        const heroTryDemo = document.getElementById('heroRegister');
-        const heroMyDashboard = document.getElementById('heroMyDashboard');
-        
-        if (isAuthenticated) {
-            if (heroTryDemo) heroTryDemo.style.display = 'none';
-            if (heroMyDashboard) {
-                heroMyDashboard.style.display = 'inline-flex';
-                heroMyDashboard.textContent = 'My Dashboard';
-                heroMyDashboard.className = 'btn btn-primary';
-                const newBtn = heroMyDashboard.cloneNode(true);
-                heroMyDashboard.parentNode.replaceChild(newBtn, heroMyDashboard);
-                newBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    SiteController.unlockDashboard();
-                });
-            }
-        } else {
-            if (heroTryDemo) heroTryDemo.style.display = 'inline-flex';
-            if (heroMyDashboard) heroMyDashboard.style.display = 'none';
-        }
-    },
-
-    _wireReturningUserButtons() {
-        // Hero My Dashboard button
-        document.getElementById('heroMyDashboard')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.unlockDashboard();
-        });
-    },
-
-    // Opens one of the auth modals (login/register/verify/forgot/reset/demo)
-    // on top of whatever is currently showing (site overlay or dashboard).
-    openAuthModal(type) {
-        const modalMap = {
-            login: 'loginModal',
-            register: 'registerModal',
-            verify: 'verifyModal',
-            forgot: 'forgotModal',
-            reset: 'resetModal',
-            demo: 'demoModal',
-            manageAccount: 'manageAccountModal'
-        };
-        const id = modalMap[type] || type;
-        const modal = document.getElementById(id);
-        if (modal) {
-            document.querySelectorAll('.modal-overlay.active').forEach((other) => {
-                if (other !== modal) other.classList.remove('active');
-            });
-            modal.classList.add('active');
-            document.body.style.overflow = 'hidden';
-        }
-    },
-
-    closeAuthModal(type) {
-        const modalMap = {
-            login: 'loginModal',
-            register: 'registerModal',
-            verify: 'verifyModal',
-            forgot: 'forgotModal',
-            reset: 'resetModal',
-            demo: 'demoModal',
-            manageAccount: 'manageAccountModal'
-        };
-        const id = modalMap[type] || type;
-        const modal = document.getElementById(id);
-        if (modal) {
-            modal.classList.remove('active');
-            document.body.style.overflow = '';
-        }
-    },
-
-    // The single entry point into the dashboard. Called after a successful
-    // login, registration + verification, Google login, Get Demo, or when
-    // a returning logged-in user clicks "Continue to Dashboard".
-    unlockDashboard() {
-        // Close any open auth modals.
-        document.querySelectorAll('#authModalsRoot .modal-overlay.active').forEach(m => {
-            m.classList.remove('active');
-        });
-
-        document.body.classList.remove('returning-user');
-        document.body.classList.add('dashboard-active');
+  _dashboardUnlocked: false,
+  init() {
+    Auth.init();
+    const startGoogle = () => { window.location.href = `${API.baseURL}/auth/google/start`; };
+    document.getElementById('googleStartBtn')?.addEventListener('click', startGoogle);
+    ['returnHomeBtn', 'returnHomeBtnMobile'].forEach(id => document.getElementById(id)?.addEventListener('click', () => this.returnToHome()));
+    document.getElementById('heroTryDemo')?.addEventListener('click', e => { e.preventDefault(); this.startDemo(); });
+    document.getElementById('myDashboardTrigger')?.addEventListener('click', e => { e.preventDefault(); this.unlockDashboard(); });
+    document.getElementById('heroMyDashboard')?.addEventListener('click', e => { e.preventDefault(); this.unlockDashboard(); });
+    ['siteSignOutBtn','authLogoutBtn'].forEach(id => document.getElementById(id)?.addEventListener('click', () => Auth.logout()));
+    const profileModal = document.getElementById('ownerProfileModal');
+    profileModal?.addEventListener('click', e => { if (e.target === profileModal && Auth.user?.profileComplete) this.closeAuthModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && profileModal?.classList.contains('active') && Auth.user?.profileComplete) this.closeAuthModal(); });
+    document.getElementById('ownerProfileForm')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = document.getElementById('ownerProfileName').value.trim();
+      const error = document.getElementById('ownerProfileError');
+      error.textContent = ''; error.style.display = 'none';
+      if (!name) { error.textContent = 'Please enter your name.'; error.style.display = 'block'; return; }
+      const btn = document.getElementById('ownerProfileNext'); btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        const result = await Auth.updateProfile({ name, profileComplete: true });
+        Auth.setUser(result.user, null);
+        document.getElementById('ownerProfileModal').classList.remove('active');
         document.body.style.overflow = '';
-
-        if (!this._dashboardUnlocked) {
-            this._dashboardUnlocked = true;
-            App.init();
-        } else {
-            // Already initialized once this page load (e.g. user bounced
-            // between overlays) - just refresh data and re-render.
-            App.loadData().then(() => App.renderCurrentView());
-        }
-
-        // Respect a view deep-linked via hash, otherwise land on dashboard.
-        const hash = window.location.hash.replace('#', '');
-        const validViews = ['dashboard', 'tenants', 'properties', 'payments', 'settings'];
-        if (hash && validViews.includes(hash)) {
-            App.navigateTo(hash);
-        }
+        this.unlockDashboard();
+      } catch (err) { error.textContent = err.message || 'Could not save your profile. Please try again.'; error.style.display = 'block'; }
+      finally { btn.disabled = false; btn.textContent = Auth.user?.profileComplete ? 'Save changes' : 'Next'; }
+    });
+    this.restoreSession();
+  },
+  async restoreSession() {
+    const params = new URLSearchParams(location.search);
+    const showHome = params.has('showHome');
+    if (showHome) {
+      Auth.stopDemo?.();
+      document.body.classList.remove('dashboard-active', 'demo-active');
+      document.getElementById('siteOverlay')?.setAttribute('aria-hidden', 'false');
+      history.replaceState({}, document.title, location.pathname);
     }
+    if (Auth.isDemoMode()) {
+      this.updateAuthUI(false);
+      this.startDemo();
+      return;
+    }
+    try {
+      const response = await fetch(`${API.baseURL}/auth/me`, { credentials: 'include' });
+      if (!response.ok) {
+        Auth.clear();
+        this.updateAuthUI(false);
+        return;
+      }
+      const payload = await response.json();
+      const user = payload?.data?.user;
+      if (!user) { Auth.clear(); this.updateAuthUI(false); return; }
+      Auth.setUser(user, null);
+      this.updateAuthUI(true);
+      if (showHome) return;
+      this.unlockDashboard();
+      if (!user.profileComplete) this.showOwnerProfile(user);
+      if (params.has('google_auth')) history.replaceState({}, document.title, location.pathname + location.hash);
+    } catch (_) { this.updateAuthUI(!!Auth.isAuthenticated); }
+  },
+  startDemo() {
+    Auth.startDemo();
+    document.body.classList.add('demo-active');
+    const google = document.getElementById('googleStartBtn'); if (google) google.style.display = 'none';
+    const demo = document.getElementById('heroTryDemo'); if (demo) demo.style.display = 'none';
+    this.unlockDashboard();
+  },
+  updateAuthUI(isAuth) {
+    const google = document.getElementById('googleStartBtn');
+    const dashboard = document.getElementById('myDashboardTrigger');
+    const heroDashboard = document.getElementById('heroMyDashboard');
+    const logout = document.getElementById('authLogoutBtn');
+    if (google) google.style.display = isAuth ? 'none' : 'inline-flex';
+    if (dashboard) dashboard.style.display = isAuth ? 'inline-flex' : 'none';
+    if (heroDashboard) heroDashboard.style.display = isAuth ? 'inline-flex' : 'none';
+    if (logout) logout.style.display = isAuth ? 'inline-flex' : 'none';
+    document.body.classList.toggle('returning-user', isAuth);
+    const demo = document.getElementById('heroTryDemo');
+    if (demo) demo.style.display = (!isAuth && !Auth.isDemoMode()) ? 'inline-flex' : 'none';
+    document.body.classList.toggle('demo-active', Auth.isDemoMode());
+  },
+  showOwnerProfile(user) {
+    const modal = document.getElementById('ownerProfileModal');
+    if (!modal) return;
+    document.getElementById('ownerProfileName').value = user.name || '';
+    document.getElementById('ownerProfileEmail').value = user.email || '';
+    document.getElementById('ownerProfileTitle').textContent = user.profileComplete ? 'Owner profile' : 'Set up your owner profile';
+    document.querySelector('#ownerProfileModal .sub').textContent = user.profileComplete ? 'Update the name shown on your rental records.' : 'Just confirm your name. Your Google email is already verified.';
+    document.getElementById('ownerProfileNext').textContent = user.profileComplete ? 'Save changes' : 'Next';
+    modal.classList.add('active'); document.body.style.overflow = 'hidden';
+  },
+  openAuthModal() { window.location.href = `${API.baseURL}/auth/google/start`; },
+  returnToHome() {
+    Auth.stopDemo?.();
+    const url = new URL(window.location.href);
+    url.search = '?showHome=1';
+    url.hash = '';
+    window.location.href = url.toString();
+  },
+  closeAuthModal() { document.getElementById('ownerProfileModal')?.classList.remove('active'); document.body.style.overflow = ''; },
+  unlockDashboard() {
+    document.body.classList.add('dashboard-active');
+    document.getElementById('siteOverlay')?.setAttribute('aria-hidden','true');
+    if (!this._dashboardUnlocked) { this._dashboardUnlocked = true; App.init(); }
+    else if (window.App?.loadData) App.loadData().then(() => App.renderCurrentView());
+  }
 };
-
-document.addEventListener('DOMContentLoaded', () => {
-    SiteController.init();
-});
-
+document.addEventListener('DOMContentLoaded', () => SiteController.init());
 window.SiteController = SiteController;

@@ -226,7 +226,7 @@ const Settings = {
             this.injectAccountCard();
         }
 
-        // Keep the Settings Account card in sync with login/logout changes.
+        // Keep the Settings Account card in sync with Google account changes.
         // The topbar has its own listeners; these listeners are only for the
         // dynamically rendered Settings Account card.
         if (!this._authSettingsListenerBound && typeof Auth !== 'undefined' && typeof Auth.addListener === 'function') {
@@ -283,9 +283,12 @@ const Settings = {
                         <div style="color: var(--text-light); font-size: 0.85rem;">${user.email || ''}</div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="manage">Manage Account</button>
+                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="profile">Owner profile</button>
                         <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="backup">Backup Now</button>
+                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="export">Export Backup</button>
+                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="import">Import Backup</button>
                         <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="restore">Restore Backup</button>
+                        <input type="file" accept="application/json,.json" data-account-backup-file hidden>
                         <button type="button" class="btn btn-sm btn-danger" data-settings-account-action="logout">Logout</button>
                     </div>
                 </div>
@@ -294,12 +297,11 @@ const Settings = {
             body.innerHTML = `
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div>
-                        <div style="font-weight: 500;">Not Logged In</div>
-                        <div style="color: var(--text-light); font-size: 0.85rem;">Create an account to save your data permanently</div>
+                        <div style="font-weight: 500;">Google account not connected</div>
+                        <div style="color: var(--text-light); font-size: 0.85rem;">Continue with Google to save data to your own Drive.</div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button type="button" class="btn btn-sm btn-primary" data-settings-account-action="login">Login</button>
-                        <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="signup">Sign Up</button>
+                        <button type="button" class="btn btn-sm btn-primary" data-settings-account-action="google">Continue with Google</button>
                     </div>
                 </div>
             `;
@@ -313,16 +315,42 @@ const Settings = {
                 button.addEventListener('click', async () => {
                     const action = button.dataset.settingsAccountAction;
                     try {
-                        if (action === 'login') {
-                            SiteController.openAuthModal('login');
-                        } else if (action === 'signup') {
-                            SiteController.openAuthModal('register');
-                        } else if (action === 'manage') {
-                            if (typeof ManageAccount !== 'undefined') {
-                                ManageAccount.open();
-                            } else {
-                                SiteController.openAuthModal('manageAccount');
-                            }
+                        if (action === 'google') {
+                            SiteController.openAuthModal();
+                        } else if (action === 'profile') {
+                            SiteController.showOwnerProfile(Auth.user || {});
+                        } else if (action === 'export') {
+                            button.disabled = true;
+                            try {
+                                const response = await fetch(`${API.baseURL}/auth/backup/export`, { credentials:'include' });
+                                if (!response.ok) { const err = await response.json().catch(()=>({})); throw new Error(err.error || 'Could not export backup'); }
+                                const backup = await response.json();
+                                const preferenceKeys = ['darkMode','language','selectedLanguage','currencySymbol','monthlyResetDay','notificationsEnabled','lastResetMonth','lastResetYear'];
+                                backup.owner = JSON.parse(localStorage.getItem('ownerInfo') || '{}');
+                                backup.preferences = {}; preferenceKeys.forEach(key=>{const value=localStorage.getItem(key);if(value!==null)backup.preferences[key]=value;});
+                                const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'}); const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a'); link.href = url; link.download = `rental-manager-backup-${new Date().toISOString().slice(0,10)}.json`; link.click(); URL.revokeObjectURL(url);
+                                showNotification('Backup exported successfully', 'success');
+                            } finally { button.disabled = false; }
+                        } else if (action === 'import') {
+                            const picker = accountBody.querySelector('[data-account-backup-file]');
+                            if (!picker) throw new Error('Backup file picker is unavailable');
+                            picker.onchange = async () => {
+                                const file = picker.files?.[0]; picker.value = ''; if (!file) return;
+                                try {
+                                    const incoming = JSON.parse(await file.text());
+                                    if (!window.confirm('Import this backup and replace the current records in this Google account? A recovery snapshot will be created first.')) return;
+                                    button.disabled = true;
+                                    const response = await fetch(`${API.baseURL}/auth/backup/import`, { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify(incoming) });
+                                    const payload = await response.json();
+                                    if (!response.ok || !payload.success) throw new Error(payload.error || payload.message || 'Backup import failed');
+                                    if (incoming.preferences && typeof incoming.preferences === 'object') Object.entries(incoming.preferences).forEach(([key,value])=>localStorage.setItem(key,String(value)));
+                                    if (incoming.owner && typeof incoming.owner === 'object') localStorage.setItem('ownerInfo', JSON.stringify({...incoming.owner,name:Auth.user?.name||incoming.owner.name||'',email:Auth.user?.email||incoming.owner.email||''}));
+                                    await App.loadData(); App.renderCurrentView(); showNotification('Backup imported successfully', 'success');
+                                } catch (error) { showNotification(error.message || 'Could not import backup', 'error'); }
+                                finally { button.disabled = false; }
+                            };
+                            picker.click();
                         } else if (action === 'backup') {
                             button.disabled = true;
                             const oldLabel = button.textContent;
@@ -588,10 +616,10 @@ const Settings = {
                 if (isDemoMode()) {
                     Components.showAlert(
                         'Demo Mode',
-                        'Please create an account or login to manage the recycle bin.',
-                        'Login',
+                        'Continue with Google to manage your saved recycle-bin records.',
+                        'Continue with Google',
                         'primary',
-                        () => { SiteController.openAuthModal('login'); });
+                        () => { SiteController.openAuthModal(); });
                     return;
                 }
                 try {

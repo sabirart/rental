@@ -52,7 +52,7 @@ const API = {
         // IMPORTANT: Always attach the auth token to every request
         const authenticated = window.Auth?.isAuthenticated === true;
         if (!authenticated && !endpoint.includes('/auth/') && !endpoint.includes('/health')) {
-            throw new Error('Authentication required. Please login.');
+            throw new Error('Please continue with Google to access your saved data.');
         }
 
         if (data) {
@@ -97,7 +97,7 @@ const API = {
                     // explicitly choose to (Auth.logout()). A dead/expired
                     // token here must NOT clear the stored session or force
                     // any navigation - we just let the user know so they can
-                    // log in again if/when they want to, while everything
+                    // continue with Google again if needed, while everything
                     // they already have on screen (including cached data)
                     // stays exactly as it was.
                     if (response.status === 401) {
@@ -114,7 +114,7 @@ const API = {
                             // user does log back in and it expires again later.
                             setTimeout(() => { this._sessionExpiredNotified = false; }, 60000);
                         }
-                        throw new Error('Session expired. Please login again.');
+                        throw new Error('Your Google session expired. Please continue with Google again.');
                     }
 
                     // 503 (Service Unavailable) / 504 (Gateway Timeout) usually
@@ -182,7 +182,7 @@ const API = {
     // A blocking, dismiss-free alert shown once a session is confirmed
     // expired (after the 401 retry above). Gives the user two explicit
     // ways forward: refresh the page (in case it was a transient blip) or
-    // jump straight to the login modal - all their cached data stays on
+    // continue directly to Google sign-in - all their cached data stays on
     // screen either way.
     _showSessionExpiredAlert() {
         if (document.getElementById('sessionExpiredAlert')) return;
@@ -211,7 +211,7 @@ const API = {
                 <p>Your session has expired. Your data is saved in your Google Drive - refresh to reconnect, or sign in with Google again.</p>
                 <div class="session-expired-actions">
                     <button type="button" class="session-refresh-btn">Refresh</button>
-                    <button type="button" class="session-login-btn">Login</button>
+                    <button type="button" class="session-login-btn">Continue with Google</button>
                 </div>
             </div>
         `;

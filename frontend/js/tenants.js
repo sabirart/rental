@@ -1292,8 +1292,8 @@ const Tenants = {
                 }
                 
                 if (!Auth.isAuthenticated) {
-                    roomSelect.innerHTML = '<option value="" disabled>Please login first</option>';
-                    showNotification('Please login to load rooms', 'warning');
+                    roomSelect.innerHTML = '<option value="" disabled>Connect Google first</option>';
+                    showNotification('Connect Google to load rooms', 'warning');
                     return;
                 }
                 
@@ -1324,10 +1324,10 @@ const Tenants = {
                     console.error('Failed to load rooms:', error);
                     
                     if (error.message && (error.message.includes('Authentication') || 
-                        error.message.includes('login') || 
+                        error.message.toLowerCase().includes('google') || 
                         error.message.includes('401'))) {
-                        roomSelect.innerHTML = '<option value="" disabled>Please login first</option>';
-                        showNotification('Please login to load rooms', 'warning');
+                        roomSelect.innerHTML = '<option value="" disabled>Connect Google first</option>';
+                        showNotification('Connect Google to load rooms', 'warning');
                     } else {
                         const property = App.state.properties.find(p => p.id === propertyId);
                         if (property && property.total_rooms) {
@@ -1341,7 +1341,7 @@ const Tenants = {
                             if (roomSelect.options.length <= 1) {
                                 roomSelect.innerHTML += '<option value="" disabled>No available rooms</option>';
                             }
-                            showNotification('Using cached room data. Please login for full access.', 'warning');
+                            showNotification('Using cached room data. Connect Google for full access.', 'warning');
                         } else {
                             roomSelect.innerHTML = '<option value="" disabled>Error loading rooms</option>';
                             showNotification('Failed to load rooms. Please try again.', 'error');
@@ -1883,8 +1883,8 @@ const Tenants = {
                 }
                 
                 if (!Auth.isAuthenticated) {
-                    roomSelect.innerHTML = '<option value="" disabled>Please login first</option>';
-                    showNotification('Please login to load rooms', 'warning');
+                    roomSelect.innerHTML = '<option value="" disabled>Connect Google first</option>';
+                    showNotification('Connect Google to load rooms', 'warning');
                     return;
                 }
                 
@@ -1922,10 +1922,10 @@ const Tenants = {
                     console.error('Failed to load rooms:', error);
                     
                     if (error.message && (error.message.includes('Authentication') || 
-                        error.message.includes('login') || 
+                        error.message.toLowerCase().includes('google') || 
                         error.message.includes('401'))) {
-                        roomSelect.innerHTML = '<option value="" disabled>Please login first</option>';
-                        showNotification('Please login to load rooms', 'warning');
+                        roomSelect.innerHTML = '<option value="" disabled>Connect Google first</option>';
+                        showNotification('Connect Google to load rooms', 'warning');
                     } else {
                         roomSelect.innerHTML = '<option value="">Error loading rooms</option>';
                         showNotification('Failed to load rooms. Please try again.', 'error');

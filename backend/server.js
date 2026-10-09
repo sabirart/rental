@@ -108,10 +108,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// Rate limiting on auth endpoints - login/register/OTP/password-reset are
-// the classic brute-force and email-bombing targets, so they still get a
-// tighter limit than the rest of the API, but generous enough that normal
-// repeated testing/retries during development can't trip it by accident.
+// Rate-limit the Google OAuth start/callback flow and related account endpoints.
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 200,

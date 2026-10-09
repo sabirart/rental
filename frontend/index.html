@@ -12,8 +12,8 @@
     </style>
     <title>Rental Manager · Free Property Management</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
-    <link rel="stylesheet" href="css/style.css?v=v15" />
-    <link rel="stylesheet" href="css/web_style.css?v=v15" />
+    <link rel="stylesheet" href="css/style.css?v=v18" />
+    <link rel="stylesheet" href="css/web_style.css?v=v18" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">    
@@ -60,16 +60,6 @@
         .btn-google svg {
             flex-shrink: 0;
         }
-        .auth-modal-box .form-group input:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .otp-input {
-            font-size: 1.2rem !important;
-            letter-spacing: 4px !important;
-            text-align: center !important;
-            font-weight: 600;
-        }
         .error-message {
             color: #dc3545;
             font-size: 0.85rem;
@@ -81,12 +71,6 @@
             font-size: 0.85rem;
             margin-top: 4px;
             display: none;
-        }
-        .resend-link {
-            color: var(--text-light);
-            cursor: pointer;
-            font-size: 0.85rem;
-            text-decoration: underline;
         }
         .resend-link:hover {
             color: var(--primary);
@@ -148,11 +132,8 @@
         }
     </style>
     <style>
-        /* Site overlay elements that are hidden for a returning logged-in
-           visitor (replaced by #myDashboardTrigger / #heroMyDashboard). */
-        body.returning-user #loginTrigger,
-        body.returning-user #registerTrigger,
-        body.returning-user #heroRegister {
+        /* Switch the landing-page action after a Google session is restored. */
+        body.returning-user #googleStartBtn {
             display: none !important;
         }
         #myDashboardTrigger,
@@ -179,9 +160,7 @@
 <body>
     <!-- ============================================================
          DASHBOARD ROOT
-         The entire application dashboard (formerly dashboard.html).
-         Hidden until the user logs in, signs up, uses Get Demo, or
-         continues past the Welcome overlay as a returning user.
+         The application dashboard is hidden until Google sign-in succeeds.
          ============================================================ -->
     <div id="dashboardRoot">
     <!-- Mobile Topbar - visible only on mobile -->
@@ -191,6 +170,9 @@
             <button type="button" class="notif-bell-btn" id="notifBellBtnMobile" aria-label="Notifications">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
                 <span class="notif-bell-badge" id="notifBellBadgeMobile" style="display:none;">0</span>
+            </button>
+            <button type="button" class="topbar-home-btn" id="returnHomeBtnMobile" aria-label="Go to home page" title="Home">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></svg>
             </button>
             <div class="mobile-topbar-guest" id="mobileGuestInfo">
                 <!-- Dynamic content injected by JavaScript -->
@@ -278,8 +260,9 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
                     <span class="notif-bell-badge" id="notifBellBadge" style="display:none;">0</span>
                 </button>
-                <button id="authLoginBtn" class="btn btn-sm btn-primary">Login</button>
-                <button id="authRegisterBtn" class="btn btn-sm btn-primary">Sign Up</button>
+                <button type="button" class="topbar-home-btn" id="returnHomeBtn" aria-label="Go to home page" title="Home">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></svg>
+                </button>
                 <button id="authProfileBtn" class="btn btn-sm btn-outline" style="display:none;">Profile</button>
                 <button id="authLogoutBtn" class="btn btn-sm btn-outline" style="display:none;">Logout</button>
             </div>
@@ -709,22 +692,16 @@
 
     <!-- ============================================================
          SITE OVERLAY
-         Shown to every visitor, signed in or not: the original hero
-         section (heading, tagline, dashboard-mock animation). A
-         signed-out visitor sees Login / Sign Up / Try Demo, opening the
-         (unchanged) auth modals below. A returning, already-authenticated
-         visitor sees this same overlay with those actions swapped out for
-         a single "My Dashboard" button (see _applyAuthState() in
-         site-controller.js) - no separate welcome screen. No close
-         button - the only way through is one of these actions.
+         Marketing landing page and Google-only entry point. Signed-in users
+         can open the dashboard; new users complete a short owner profile.
          ============================================================ -->
 <div id="siteOverlay">
     <div class="site-topbar">
         <span class="site-topbar-brand">RentalManager</span>
         <div class="site-topbar-actions">
-            <a href="#" class="btn btn-outline btn-sm" id="loginTrigger">Login</a>
-            <a href="#" class="btn btn-primary btn-sm" id="registerTrigger">Sign Up</a>
-            <a href="#" class="btn btn-primary btn-sm" id="myDashboardTrigger">My Dashboard</a>
+            <button type="button" class="btn btn-google" id="googleStartBtn" aria-label="Continue with Google"><svg aria-hidden="true" viewBox="0 0 48 48" focusable="false"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.9c-.58 2.96-2.25 5.48-4.73 7.18l7.65 5.93c4.47-4.13 7.16-10.2 7.16-17.58z"/><path fill="#FBBC05" d="M10.54 28.59a14.4 14.4 0 0 1 0-9.18l-7.98-6.19a23.94 23.94 0 0 0 0 21.56l7.98-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.87l-7.65-5.93c-2.13 1.43-4.86 2.28-8.25 2.28-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Continue with Google</button>
+            <button type="button" class="btn btn-outline btn-sm" id="myDashboardTrigger" style="display:none">Open Rental Manager</button>
+            <button type="button" class="btn btn-outline btn-sm" id="siteSignOutBtn" style="display:none">Sign out</button>
         </div>
     </div>
     <section class="hero">
@@ -733,47 +710,24 @@
                 <h1>Rental Management<br />Made Easy</h1>
                 <p>Track tenants, properties, and payments all in one free app. No subscriptions, no limits.</p>
                 <div class="hero-cta">
-                    <a href="#" class="btn btn-outline" id="heroRegister">Try Demo</a>
-                    <a href="#" class="btn btn-outline" id="heroMyDashboard">My Dashboard</a>
+                    <button type="button" class="btn btn-outline" id="heroTryDemo">Try Demo</button>
+                    <a href="#" class="btn btn-outline" id="heroMyDashboard" style="display:none">Open Rental Manager</a>
                 </div>
             </div>
             <script>
             (function () {
-                // FIX: without this, a returning logged-in visitor briefly saw
-                // Login/Sign Up/Try Demo (the signed-out buttons) before
-                // site-controller.js's DOMContentLoaded handler corrected them
-                // to Logout/My Dashboard a moment later - the "buttons
-                // fighting/flashing" bug. This runs immediately as the page
-                // parses (before anything below is painted) and mirrors
-                // SiteController._updateButtons()'s authenticated-state values
-                // exactly, so the correct buttons are already in place on the
-                // very first paint - site-controller.js still runs afterward as
-                // normal and simply confirms the same state, with no visible
-                // change and no other behavior altered.
                 try {
-                    var authed = !!(localStorage.getItem('auth_token') && localStorage.getItem('auth_user'));
-                    if (!authed) return;
-                    document.body.classList.add('returning-user');
-
-                    var loginBtn = document.getElementById('loginTrigger');
-                    var signupBtn = document.getElementById('registerTrigger');
-                    var dashBtn = document.getElementById('myDashboardTrigger');
-                    var heroDemo = document.getElementById('heroRegister');
+                    var hasUser = !!localStorage.getItem('auth_user');
+                    document.body.classList.toggle('returning-user', hasUser);
+                    var google = document.getElementById('googleStartBtn');
+                    var dash = document.getElementById('myDashboardTrigger');
                     var heroDash = document.getElementById('heroMyDashboard');
-
-                    if (loginBtn) loginBtn.style.display = 'none';
-                    if (signupBtn) signupBtn.style.display = 'none';
-                    if (dashBtn) {
-                        dashBtn.style.display = 'inline-flex';
-                        dashBtn.textContent = 'Logout';
-                        dashBtn.className = 'btn btn-outline btn-sm';
+                    if (hasUser) {
+                        if (google) google.style.display = 'none';
+                        if (dash) dash.style.display = 'inline-flex';
+                        if (heroDash) heroDash.style.display = 'inline-flex';
                     }
-                    if (heroDemo) heroDemo.style.display = 'none';
-                    if (heroDash) {
-                        heroDash.style.display = 'inline-flex';
-                        heroDash.className = 'btn btn-primary';
-                    }
-                } catch (e) {}
+                } catch (_) {}
             })();
             </script>
             <div class="hero-img" id="heroIcons">
@@ -809,268 +763,61 @@
 
     <!-- SOCIAL FOOTER - Only on landing page, NOT in dashboard -->
     <div class="social-footer">
-        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
-            <i class="fab fa-instagram"></i>
-        </a>
-        <a href="https://github.com" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
-            <i class="fab fa-github"></i>
-        </a>
+        <div class="social-footer-icons">
+            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+                <i class="fab fa-instagram"></i>
+            </a>
+            <a href="https://github.com" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+                <i class="fab fa-github"></i>
+            </a>
+        </div>
+        <a class="footer-privacy-link" href="privacy-policy.html" target="_blank" rel="noopener">Privacy &amp; data use</a>
     </div>
 </div>
 
-    <!-- ============================================================
-         AUTH MODALS
-         Login / Register / Verify / Forgot / Reset / Demo. Live
-         outside both #siteOverlay and #dashboardRoot so they can be
-         opened on top of either one.
-         ============================================================ -->
-    <div id="authModalsRoot">
-    <!-- LOGIN MODAL -->
-    <div class="modal-overlay" id="loginModal">
-        <div class="auth-modal-box">
-            <button class="close" id="loginClose">&times;</button>
-            <h2>Log in</h2>
-            <p class="sub">Welcome back</p>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="loginEmail" placeholder="you@example.com" required />
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="loginPassword" placeholder="••••••••" required />
-                </div>
-                <div class="error-message" id="loginError"></div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Log in</button>
-                    <div class="form-footer">
-                        <a id="loginForgotLink">Forgot password?</a>
-                        <span>Don't have an account? <a id="loginSwitchRegister">Sign up</a></span>
-                    </div>
-                    <div class="divider"><span>or</span></div>
-                    <button type="button" class="btn-google" id="googleLoginBtn">
-                        <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                        Continue with Google
-                    </button>
-                </div>
-            </form>
-        </div>
+    <!-- Google-only first-run owner profile. Email comes from the verified Google account. -->
+    <div id="ownerProfileModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="ownerProfileTitle">
+      <div class="auth-modal-box owner-profile-box">
+        <div class="owner-profile-mark" aria-hidden="true">RM</div>
+        <h2 id="ownerProfileTitle">Set up your owner profile</h2>
+        <p class="sub">Just confirm your name. Your Google email is already verified.</p>
+        <form id="ownerProfileForm">
+          <div class="form-group">
+            <label for="ownerProfileName">Owner name</label>
+            <input id="ownerProfileName" name="name" type="text" autocomplete="name" maxlength="100" required />
+          </div>
+          <div class="form-group">
+            <label for="ownerProfileEmail">Google account</label>
+            <input id="ownerProfileEmail" type="email" readonly aria-readonly="true" />
+          </div>
+          <p class="owner-profile-privacy">Your properties, tenants and payment records are saved in a Rental Manager folder in your Google Drive. We request access only to files created or opened by this app. <a href="privacy-policy.html" target="_blank" rel="noopener">Read privacy details</a>.</p>
+          <div class="error-message" id="ownerProfileError" role="alert"></div>
+          <button class="btn btn-primary" id="ownerProfileNext" type="submit" style="width:100%">Next</button>
+        </form>
+      </div>
     </div>
 
-    <!-- REGISTER MODAL -->
-    <div class="modal-overlay" id="registerModal">
-        <div class="auth-modal-box">
-            <button class="close" id="registerClose">&times;</button>
-            <h2>Sign up</h2>
-            <p class="sub">Start managing for free</p>
-            <form id="registerForm">
-                <div class="form-group">
-                    <label>Full name</label>
-                    <input type="text" id="registerName" placeholder="Sabir Hussain" required />
-                </div>
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="registerEmail" placeholder="you@example.com" required />
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="registerPassword" placeholder="Min 6 characters" required />
-                </div>
-                <div class="error-message" id="registerError"></div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Create Account</button>
-                    <div class="form-footer">
-                        <span>Already have an account? <a id="registerSwitchLogin">Log in</a></span>
-                    </div>
-                    <div class="divider"><span>or</span></div>
-                    <button type="button" class="btn-google" id="googleRegisterBtn">
-                        <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                        Continue with Google
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
 
-    <!-- VERIFY EMAIL MODAL -->
-    <div class="modal-overlay" id="verifyModal">
-        <div class="auth-modal-box">
-            <button class="close" id="verifyClose">&times;</button>
-            <h2>Verify Email</h2>
-            <p class="sub">Enter the 6-digit OTP sent to your email</p>
-            <form id="verifyForm">
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="verifyEmail" readonly disabled style="background: #f5f5f5; opacity: 0.8;" />
-                </div>
-                <div class="form-group">
-                    <label>OTP Code</label>
-                    <input type="text" class="otp-input" id="verifyOtp" placeholder="------" maxlength="6" required />
-                </div>
-                <div class="error-message" id="verifyError"></div>
-                <div class="success-message" id="verifySuccess"></div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Verify Email</button>
-                    <div class="form-footer">
-                        <a class="resend-link" id="resendVerifyLink">Resend OTP</a>
-                        <a id="verifyBackLogin">Back to Login</a>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
 
-    <!-- FORGOT PASSWORD MODAL -->
-    <div class="modal-overlay" id="forgotModal">
-        <div class="auth-modal-box">
-            <button class="close" id="forgotClose">&times;</button>
-            <h2>Forgot Password</h2>
-            <p class="sub">Enter your email to receive a reset OTP</p>
-            <form id="forgotForm">
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="forgotEmail" placeholder="you@example.com" required />
-                </div>
-                <div class="error-message" id="forgotError"></div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Send Reset OTP</button>
-                    <div class="form-footer">
-                        <a id="forgotBackLogin">Back to Login</a>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
 
-    <!-- RESET PASSWORD MODAL -->
-    <div class="modal-overlay" id="resetModal">
-        <div class="auth-modal-box">
-            <button class="close" id="resetClose">&times;</button>
-            <h2>Reset Password</h2>
-            <p class="sub">Enter the OTP and set a new password</p>
-            <form id="resetForm">
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="resetEmail" placeholder="you@example.com" required />
-                </div>
-                <div class="form-group">
-                    <label>OTP Code</label>
-                    <input type="text" class="otp-input" id="resetOtp" placeholder="------" maxlength="6" required />
-                </div>
-                <div class="form-group">
-                    <label>New Password</label>
-                    <input type="password" id="resetNewPassword" placeholder="Min 6 characters" required />
-                </div>
-                <div class="error-message" id="resetError"></div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Reset Password</button>
-                    <div class="form-footer">
-                        <a id="resetBackLogin">Back to Login</a>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- DEMO MODE MODAL -->
-    <div class="modal-overlay" id="demoModal">
-        <div class="auth-modal-box">
-            <button class="close" id="demoClose">&times;</button>
-            <h2>Try Demo Mode</h2>
-            <p class="sub">Explore the full dashboard instantly</p>
-            <ul class="demo-features">
-                <li><i class="fa-solid fa-circle-check"></i> Data is stored temporarily in your browser</li>
-                <li><i class="fa-solid fa-circle-check"></i> Nothing is sent to or saved on our servers</li>
-                <li><i class="fa-solid fa-circle-check"></i> Create a free account anytime to save your data permanently</li>
-                <li><i class="fa-solid fa-triangle-exclamation"></i> All data is lost when you refresh or close the page</li>
-            </ul>
-            <div class="form-actions demo-actions">
-                <button type="button" class="btn btn-primary" id="demoConfirmBtn">Let's Visit Dashboard</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MANAGE ACCOUNT MODAL -->
-    <div class="modal-overlay" id="manageAccountModal">
-        <div class="auth-modal-box">
-            <button class="close" id="manageAccountClose">&times;</button>
-            <h2>Manage Account</h2>
-            <p class="sub" id="manageAccountEmail">&nbsp;</p>
-
-            <div class="manage-account-tabs" id="manageAccountTabs">
-                <button type="button" class="manage-account-tab active" data-tab="details">Account Details</button>
-                <button type="button" class="manage-account-tab" data-tab="password" id="manageAccountPasswordTab">Reset Password</button>
-                <button type="button" class="manage-account-tab" data-tab="delete">Delete Account</button>
-            </div>
-
-            <!-- Account Details -->
-            <form id="manageAccountDetailsForm" class="manage-account-panel" data-panel="details">
-                <div class="form-group">
-                    <label>Full Name</label>
-                    <input type="text" id="manageAccountName" required />
-                </div>
-                <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="manageAccountEmailField" readonly disabled style="background: #f5f5f5; opacity: 0.8;" />
-                </div>
-                <div class="error-message" id="manageAccountDetailsError"></div>
-                <div class="success-message" id="manageAccountDetailsSuccess"></div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
-                </div>
-            </form>
-
-            <!-- Reset / Change Password -->
-            <form id="manageAccountPasswordForm" class="manage-account-panel" data-panel="password" style="display: none;">
-                <p class="manage-account-hint" id="manageAccountPasswordHint" style="display:none; color:#6b6b6b; font-size:0.85rem; margin-bottom:12px;">
-                    Your account was created with Google and doesn't have a password yet. Create one below so you can also log in with your email, and so you can delete your account later.
-                </p>
-                <div class="form-group" id="manageAccountCurrentPasswordGroup">
-                    <label>Current Password</label>
-                    <input type="password" id="manageAccountCurrentPassword" />
-                </div>
-                <div class="form-group">
-                    <label>New Password</label>
-                    <input type="password" id="manageAccountNewPassword" minlength="6" required />
-                </div>
-                <div class="form-group">
-                    <label>Confirm New Password</label>
-                    <input type="password" id="manageAccountConfirmPassword" minlength="6" required />
-                </div>
-                <div class="error-message" id="manageAccountPasswordError"></div>
-                <div class="success-message" id="manageAccountPasswordSuccess"></div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary" id="manageAccountPasswordSubmitBtn">Change Password</button>
-                </div>
-            </form>
-
-            <!-- Delete Account -->
-            <div class="manage-account-panel" data-panel="delete" style="display: none;">
-                <p class="manage-account-warning">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                    This permanently deletes your account and all of your properties, tenants, and payment
-                    records. This cannot be undone.
-                </p>
-                <p class="manage-account-hint" id="manageAccountDeleteNoPasswordHint" style="display:none; color:#6b6b6b; font-size:0.85rem; margin-bottom:12px;">
-                    Your account doesn't have a password yet. Please
-                    <a href="#" id="manageAccountGoCreatePassword">create a password</a>
-                    first - it's needed to confirm account deletion.
-                </p>
-                <form id="manageAccountDeleteForm">
-                    <div class="form-group" id="manageAccountDeletePasswordGroup">
-                        <label>Confirm Password</label>
-                        <input type="password" id="manageAccountDeletePassword" />
-                    </div>
-                    <div class="error-message" id="manageAccountDeleteError"></div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-danger" id="manageAccountDeleteSubmitBtn">Permanently Delete My Account</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    </div>
-
+    <style>
+      #ownerProfileModal{display:none;position:fixed;inset:0;z-index:999999;background:rgba(16,24,40,.42);backdrop-filter:blur(5px);align-items:center;justify-content:center;padding:16px}
+      #ownerProfileModal.active{display:flex}
+      #ownerProfileModal .owner-profile-box{background:#fff;max-width:440px;width:100%;padding:28px;border:1px solid #eaecf0;border-radius:16px;box-shadow:0 24px 60px rgba(16,24,40,.18);animation:slideUp .22s ease}
+      #ownerProfileModal h2{font-size:22px;line-height:1.3;letter-spacing:-.03em;font-weight:650;margin:0 0 6px;color:#101828}
+      #ownerProfileModal .sub{font-size:13px;line-height:1.5;color:#667085;margin:0 0 22px}
+      #ownerProfileModal .form-group{margin:0 0 16px}
+      #ownerProfileModal .form-group label{display:block;font-size:12px;font-weight:600;color:#344054;margin:0 0 7px}
+      #ownerProfileModal .form-group input{width:100%;min-height:44px;padding:10px 12px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;color:#101828;font:inherit;font-size:14px;outline:none}
+      #ownerProfileModal .form-group input:focus{border-color:#667085;box-shadow:0 0 0 3px rgba(102,112,133,.12)}
+      #ownerProfileModal .form-group input[readonly]{background:#f9fafb;color:#667085}
+      #ownerProfileModal .owner-profile-privacy{font-size:12px;line-height:1.6;color:#667085;margin:14px 0 18px}
+      #ownerProfileModal .owner-profile-privacy a{color:#344054;text-decoration:underline;text-underline-offset:3px}
+      #ownerProfileModal .error-message{display:none;color:#b42318;font-size:12px;margin:0 0 10px}
+      #ownerProfileModal #ownerProfileNext{width:100%;min-height:44px;border-radius:8px}
+      #ownerProfileModal #ownerProfileNext:disabled{opacity:.65;cursor:wait}
+      .privacy-note{font-size:12px;color:#667085;margin-top:14px}.owner-profile-box{max-width:440px;width:calc(100% - 28px);padding:28px;border-radius:16px}.owner-profile-mark{width:42px;height:42px;border-radius:12px;background:#f2f4f7;color:#344054;display:grid;place-items:center;font-weight:750;margin-bottom:18px}.owner-profile-privacy{font-size:12px;line-height:1.6;color:#667085;margin:14px 0}.owner-profile-box input[readonly]{background:#f9fafb;color:#667085}
+    </style>
     <style>
       .document-view-card{border:1px solid var(--border-light);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--bg-card,#fff)}
       .document-view-card-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
@@ -1082,27 +829,26 @@
     </style>
     <!-- Scripts -->
     <!-- Application scripts -->
-    <script src="js/api.js?v=v16"></script>
-    <script src="js/auth.js?v=v16"></script>
-    <script src="js/app.js?v=v15"></script>
-    <script src="js/dashboard.js?v=v15"></script>
-    <script src="js/tenants.js?v=v15"></script>
-    <script src="js/properties.js?v=v15"></script>
-    <script src="js/payments.js?v=v15"></script>
-    <script src="js/settings.js?v=v16"></script>
-    <script src="js/notifications.js?v=v15"></script>
-    <script src="js/data-io.js?v=v15"></script>
-    <script src="js/utils.js?v=v15"></script>
-    <script src="js/components.js?v=v15"></script>
-    <script src="js/recycle.js?v=v15"></script>
-    <script src="js/mobile.js?v=v15"></script>
-    <script src="js/sample-data.js?v=v15"></script>
-    <script src="js/auth-ui.js?v=v15"></script>
-    <script src="js/manage-account.js?v=v15"></script>
-    <script src="js/web_script.js?v=v17"></script>
-    <script src="js/animation.js?v=v15"></script>
-    <script src="js/site-controller.js?v=v15"></script>
-    <script src="js/overlay-back-guard.js?v=v15"></script>
-    <script src="js/interaction-guard.js?v=v15"></script>
+    <script src="js/api.js?v=v18"></script>
+    <script src="js/auth.js?v=v18"></script>
+    <script src="js/app.js?v=v18"></script>
+    <script src="js/dashboard.js?v=v18"></script>
+    <script src="js/tenants.js?v=v18"></script>
+    <script src="js/properties.js?v=v18"></script>
+    <script src="js/payments.js?v=v18"></script>
+    <script src="js/settings.js?v=v18"></script>
+    <script src="js/notifications.js?v=v18"></script>
+    <script src="js/data-io.js?v=v18"></script>
+    <script src="js/utils.js?v=v18"></script>
+    <script src="js/components.js?v=v18"></script>
+    <script src="js/recycle.js?v=v18"></script>
+    <script src="js/mobile.js?v=v18"></script>
+    <script src="js/sample-data.js?v=v18"></script>
+    <script src="js/auth-ui.js?v=v18"></script>
+    <script src="js/web_script.js?v=v18"></script>
+    <script src="js/animation.js?v=v18"></script>
+    <script src="js/site-controller.js?v=v18"></script>
+    <script src="js/overlay-back-guard.js?v=v18"></script>
+    <script src="js/interaction-guard.js?v=v18"></script>
 </body>
 </html>

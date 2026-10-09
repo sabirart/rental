@@ -21,59 +21,13 @@ const validate = (req, res, next) => {
 // Public routes
 router.get('/google/start', authController.googleStart);
 router.get('/google/callback', authController.googleCallback);
-router.post('/register', [
-    body('name').notEmpty().withMessage('Name is required').trim().escape(),
-    body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    validate
-], authController.register);
-
-router.post('/verify-email', [
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('otp').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
-    validate
-], authController.verifyEmail);
-
-router.post('/resend-verification', [
-    body('email').isEmail().withMessage('Valid email is required'),
-    validate
-], authController.resendVerification);
-
-router.post('/login', [
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('password').notEmpty().withMessage('Password is required'),
-    validate
-], authController.login);
-
-router.post('/google-login', [
-    // Accept either a web access token (browser flow) or an idToken
-    // (native Android app flow) - authController validates whichever is sent.
-    body().custom((value, { req }) => {
-        if (!req.body.token && !req.body.idToken) {
-            throw new Error('Google token is required');
-        }
-        return true;
-    }),
-    validate
-], authController.googleLogin);
-
-router.post('/forgot-password', [
-    body('email').isEmail().withMessage('Valid email is required'),
-    validate
-], authController.forgotPassword);
-
-router.post('/reset-password', [
-    body('email').isEmail().withMessage('Valid email is required'),
-    body('otp').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
-    body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    validate
-], authController.resetPassword);
+// Google OAuth is the only public authentication flow.
 
 // Protected routes
 router.get('/me', authMiddleware.authenticate, authController.me);
-router.post('/google-drive-token', authMiddleware.authenticate, authController.setGoogleDriveToken);
-router.post('/migrate-legacy', authMiddleware.authenticate, authController.migrateLegacy);
 router.get('/backup/status', authMiddleware.authenticate, authController.backupStatus);
+router.get('/backup/export', authMiddleware.authenticate, authController.exportBackup);
+router.post('/backup/import', authMiddleware.authenticate, authController.importBackup);
 router.post('/backup', authMiddleware.authenticate, authController.backup);
 router.post('/backup/restore', authMiddleware.authenticate, authController.restoreBackup);
 router.post('/backup/new-account', authMiddleware.authenticate, authController.startFreshAccount);
@@ -81,23 +35,9 @@ router.get('/google-drive/status', authMiddleware.authenticate, async (req, res,
 router.put('/profile', authMiddleware.authenticate, [
     body('name').optional().trim().escape(),
     body('profilePic').optional().trim(),
+    body('profileComplete').optional().isBoolean(),
     validate
 ], authController.updateProfile);
 
-router.post('/change-password', authMiddleware.authenticate, [
-    // Optional at the validation layer - the controller enforces it only
-    // when the account already has a password to verify against (accounts
-    // without one yet, e.g. Google-only accounts, are creating their
-    // first password and have nothing to verify).
-    body('currentPassword').optional({ nullable: true, checkFalsy: true }),
-    body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
-    validate
-], authController.changePassword);
-
 router.post('/logout', authMiddleware.authenticate, authController.logout);
-router.delete('/account', authMiddleware.authenticate, [
-    body('password').optional(),
-    validate
-], authController.deleteAccount);
-
 module.exports = router;

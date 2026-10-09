@@ -34,7 +34,7 @@ async function findDataFile(drive, folderId) {
   return found.data.files?.[0] || null;
 }
 function emptyData(userId) {
-  return { schemaVersion: 2, user: { id: userId }, properties: [], rooms: [], tenants: [], payments: [], recycleBin: [], settings: { user_id: userId, notifications_enabled: 1, monthly_reset_day: 31, last_reset_month: null, last_reset_year: null } };
+  return { schemaVersion: 3, user: { id: userId, profileComplete: false }, properties: [], rooms: [], tenants: [], payments: [], recycleBin: [], settings: { user_id: userId, notifications_enabled: 1, monthly_reset_day: 31, last_reset_month: null, last_reset_year: null } };
 }
 async function readJsonFile(drive, fileId) {
   const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'stream' });
@@ -164,33 +164,60 @@ async function saveData() {
 async function runWithRequestContext(userId, driveToken, fn) {
   return context.run({ userId, driveToken }, fn);
 }
+async function withUserWriteLock(userId, task) {
+  const previous = mutationQueues.get(userId) || Promise.resolve();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const tail = previous.then(() => gate);
+  mutationQueues.set(userId, tail);
+  await previous;
+  try { return await task(); }
+  finally { release(); if (mutationQueues.get(userId) === tail) mutationQueues.delete(userId); }
+}
 async function transaction(fn) {
   const parent = getContext();
-  const loaded = await readDriveData();
-  const tx = { ...parent, data: JSON.parse(JSON.stringify(loaded.data)), meta: loaded, transaction: true };
-  return context.run(tx, async () => {
-    const executor = { query: async()=>[], get: async()=>undefined, run: async()=>({changes:0}) };
-    const result = await fn(executor);
-    await writeDriveData(tx.data, loaded);
-    return result;
+  const userId = parent.userId || 'anonymous';
+  return withUserWriteLock(userId, async () => {
+    const loaded = await readDriveData();
+    const tx = { ...parent, data: JSON.parse(JSON.stringify(loaded.data)), meta: loaded, transaction: true };
+    return context.run(tx, async () => {
+      const executor = { query: async()=>[], get: async()=>undefined, run: async()=>({changes:0}) };
+      const result = await fn(executor);
+      await writeDriveData(tx.data, loaded);
+      const today = new Date().toISOString().slice(0, 10);
+      if (tx.data._autoBackupDate !== today) {
+        try { await createBackupSnapshot(); tx.data._autoBackupDate = today; await writeDriveData(tx.data, loaded); }
+        catch (e) { console.warn('Automatic daily backup skipped:', e.message); }
+      }
+      return result;
+    });
   });
 }
 async function mutate(mutator) {
-  const userId = getContext().userId || 'anonymous';
-  const previous = mutationQueues.get(userId) || Promise.resolve();
-  let release;
-  const current = new Promise(resolve => { release = resolve; });
-  mutationQueues.set(userId, previous.then(() => current));
-  await previous;
-  try {
+  const currentContext = getContext();
+  if (currentContext.transaction) return mutator(await getData());
+  const userId = currentContext.userId || 'anonymous';
+  return withUserWriteLock(userId, async () => {
+    // Reads may have populated this request context before it waited for the lock.
+    // Reload under the lock so a later writer cannot commit a stale whole-file snapshot.
+    const lockedContext = getContext(); lockedContext.data = null; lockedContext.meta = null;
     const data = await getData();
     const result = await mutator(data);
-    if (!getContext().transaction) await saveData();
+    if (!getContext().transaction) {
+      await saveData();
+      // One automatic recovery snapshot per account per UTC day. The live JSON
+      // file is saved on every mutation; snapshots are an additional recovery layer.
+      const today = new Date().toISOString().slice(0, 10);
+      if (data._autoBackupDate !== today) {
+        try {
+          await createBackupSnapshot();
+          data._autoBackupDate = today;
+          await saveData();
+        } catch (e) { console.warn('Automatic daily backup skipped:', e.message); }
+      }
+    }
     return result;
-  } finally {
-    release();
-    if (mutationQueues.get(userId) === current) mutationQueues.delete(userId);
-  }
+  });
 }
 function rowsForUser(data, userId) { return data; }
 module.exports = { context, getContext, runWithRequestContext, transaction, getData, saveData, mutate, driveClient, findOrCreateFolder, findDataFile, writeDriveData, emptyData, requireToken, backupStatus, createBackupSnapshot, restoreBackup, startFreshAccount, FOLDER_NAME, DATA_FILE_NAME, BACKUP_FOLDER_NAME };

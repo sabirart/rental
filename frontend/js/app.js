@@ -65,11 +65,9 @@ const App = {
         
         // Update owner info from user if authenticated
         if (isAuthenticated && user) {
-            const ownerInfo = {
-                name: user.name || '',
-                email: user.email || '',
-            };
-            localStorage.setItem('ownerInfo', JSON.stringify(ownerInfo));
+            let ownerInfo = {};
+            try { ownerInfo = JSON.parse(localStorage.getItem('ownerInfo') || '{}'); } catch (_) {}
+            localStorage.setItem('ownerInfo', JSON.stringify({ ...ownerInfo, name: user.name || ownerInfo.name || '', email: user.email || ownerInfo.email || '' }));
             
             // Update settings form if visible
             if (document.getElementById('ownerName')) {
@@ -116,7 +114,7 @@ const App = {
         } catch (error) {
             console.error('Failed to load data:', error);
             this.loadFromLocalStorage();
-            if (!silent) showNotification('Please login to save your data permanently', 'info');
+            if (!silent) showNotification('Continue with Google to save your data permanently', 'info');
         } finally {
             if (!silent) this.hideLoading();
             if (typeof Notifications !== 'undefined' && Notifications._enabled !== undefined) {
@@ -434,7 +432,7 @@ const App = {
         } catch (error) {
             console.error('Failed to refresh data:', error);
             this.loadFromLocalStorage();
-            showNotification('Please login to save your data permanently', 'info');
+            showNotification('Continue with Google to save your data permanently', 'info');
         } finally {
             this.hideLoading();
             this.renderCurrentView();
@@ -460,7 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('hashchange', hashHandler);
     App._eventListeners.push({ target: window, event: 'hashchange', handler: hashHandler });
     // Note: App.init() itself is now triggered by SiteController.unlockDashboard()
-    // once the user actually enters the dashboard (via Login/Sign Up/Get Demo, or
+    // once the user actually enters the dashboard (after Google sign-in, or
     // "Continue to Dashboard" on the Welcome overlay) rather than unconditionally
     // on every page load, since this page also serves the marketing site overlay.
 });

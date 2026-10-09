@@ -958,3 +958,9 @@ body.dark-mode .settings-card-header{background:rgba(255,255,255,.045)}
     border-top: 0;
   }
 }
+
+/* Home shortcut beside notifications in the application topbar */
+.topbar-home-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 34px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--text);cursor:pointer;transition:background-color .15s ease,color .15s ease}
+.topbar-home-btn:hover{background:var(--bg-hover);color:var(--text)}
+.topbar-home-btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.topbar-home-btn svg{width:18px;height:18px;display:block}

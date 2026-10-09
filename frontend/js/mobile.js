@@ -487,10 +487,10 @@
         Mobile.init();
     }
 
-    // Mobile guest login/signup buttons
+    // Mobile Google sign-in button
     document.addEventListener('click', function(e) {
-        if (e.target.id === 'mobileGuestSignupBtn' || e.target.closest('#mobileGuestSignupBtn')) {
-            SiteController.openAuthModal('register');
+        if (e.target.id === 'mobileGuestGoogleBtn' || e.target.closest('#mobileGuestGoogleBtn')) {
+            SiteController.openAuthModal();
         }
         if (e.target.closest('#mobileUserInfo')) {
             document.querySelector('[data-view="settings"]')?.click();
@@ -517,9 +517,9 @@
                 </div>
             `;
         } else {
-            // Only Sign Up button - matches website style
+            // Google-only sign-in action
             container.innerHTML = `
-                <button class="guest-login-btn" id="mobileGuestSignupBtn">Sign Up</button>
+                <button class="guest-login-btn" id="mobileGuestGoogleBtn">Continue with Google</button>
             `;
         }
     }
