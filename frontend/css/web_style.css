@@ -447,3 +447,18 @@
 .mobile-topbar-title:hover{text-decoration:none}
 @media(max-width:768px){.mobile-topbar{gap:10px;padding-left:14px;padding-right:14px}.mobile-topbar-title{max-width:44vw;overflow:hidden;text-overflow:ellipsis}.app-topbar-left{max-width:none!important;min-width:0}.app-topbar-google{max-width:150px}.app-topbar-google span{white-space:nowrap}}
 #siteOverlay .hero-cta #heroTryDemo[style*="display: none"],#siteOverlay .hero-cta #heroMyDashboard[style*="display: none"]{display:none!important}
+
+
+/* v23: ensure landing-page social brand icons remain visible. */
+.social-footer-icons a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.social-footer-icons .fab,
+.social-footer-icons .fa-brands {
+    font-family: "Font Awesome 6 Brands";
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1;
+}

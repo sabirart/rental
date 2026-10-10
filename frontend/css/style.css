@@ -1017,3 +1017,46 @@ main:focus { outline: none; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 .payment-history-item:hover { background: var(--bg-hover); }
+
+
+/* v23: theme-aware hover states for top-bar and utility icons. */
+body.dark-mode .notif-bell-btn:hover,
+body.dark-mode .notif-bell-btn:focus-visible,
+body.dark-mode .app-topbar-auth-home:hover,
+body.dark-mode .app-topbar-profile:hover,
+body.dark-mode .nav-toggle:hover {
+    background: var(--bg-hover) !important;
+    color: var(--text) !important;
+}
+body.dark-mode .notif-bell-btn:active,
+body.dark-mode .app-topbar-auth-home:active,
+body.dark-mode .app-topbar-profile:active {
+    background: #383838 !important;
+    color: var(--text) !important;
+}
+body.dark-mode .stat-card:hover,
+body.dark-mode .ratio-card:hover {
+    background: var(--bg-hover) !important;
+    border-color: var(--border) !important;
+    color: var(--text);
+}
+
+/* v23: keep native select controls and their dropdown arrows visible in dark mode. */
+body.dark-mode select,
+body.dark-mode select.form-control,
+body.dark-mode .filter-select {
+    color-scheme: dark;
+    color: var(--text);
+    background-color: var(--bg-white);
+    border-color: var(--border);
+}
+body.dark-mode select:focus,
+body.dark-mode select:hover,
+body.dark-mode select.form-control:focus,
+body.dark-mode .filter-select:focus {
+    border-color: #777;
+}
+body.dark-mode select option {
+    color: var(--text);
+    background-color: var(--bg-white);
+}
