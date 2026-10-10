@@ -1,44 +1,30 @@
-// routes/auth.js
-
+'use strict';
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const authMiddleware = require('../middleware/auth');
 const { getStatus } = require('../services/googleDrive');
-const { body, validationResult } = require('express-validator');
+const { validateProfile, validate } = require('../middleware/validation');
+const { body } = require('express-validator');
 
-const validate = (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({
-            success: false,
-            errors: errors.array().map(err => ({ field: err.path, message: err.msg }))
-        });
-    }
-    next();
-};
+const guard = authMiddleware.authenticate;
 
-// Public routes
+// Public
 router.get('/google/start', authController.googleStart);
 router.get('/google/callback', authController.googleCallback);
-// Google OAuth is the only public authentication flow.
+router.post('/logout', authController.logout); // must work with an expired session
 
-// Protected routes
-router.get('/me', authMiddleware.authenticate, authController.me);
-router.get('/backup/status', authMiddleware.authenticate, authController.backupStatus);
-router.get('/backup/export', authMiddleware.authenticate, authController.exportBackup);
-router.post('/backup/import', authMiddleware.authenticate, authController.importBackup);
-router.post('/backup', authMiddleware.authenticate, authController.backup);
-router.post('/backup/restore', authMiddleware.authenticate, authController.restoreBackup);
-router.post('/backup/new-account', authMiddleware.authenticate, authController.startFreshAccount);
-router.get('/google-drive/status', authMiddleware.authenticate, async (req, res, next) => { try { res.json({ success: true, data: await getStatus(req) }); } catch (e) { next(e); } });
-router.put('/profile', authMiddleware.authenticate, [
-    body('name').optional().trim().escape(),
-    body('profilePic').optional().trim(),
-    body('profileComplete').optional().isBoolean(),
-    validate
-], authController.updateProfile);
+// Protected
+router.get('/me', guard, authController.me);
+router.get('/backup/status', guard, authController.backupStatus);
+router.get('/backup/export', guard, authController.exportBackup);
+router.post('/backup/import', guard, authController.importBackup);
+router.post('/backup', guard, authController.backup);
+router.post('/backup/restore', guard, [body('backupId').optional({ nullable: true }).isString().isLength({ max: 200 }), validate], authController.restoreBackup);
+router.post('/backup/new-account', guard, authController.startFreshAccount);
+router.get('/google-drive/status', guard, async (req, res, next) => { try { res.json({ success: true, data: await getStatus(req, res) }); } catch (e) { next(e); } });
+router.put('/profile', guard, validateProfile, validate, authController.updateProfile);
+router.get('/account/delete-preview', guard, authController.deletePreview);
+router.post('/account/delete', guard, authController.deleteAccount);
 
-router.post('/account/delete', authMiddleware.authenticate, authController.deleteAccount);
-router.post('/logout', authMiddleware.authenticate, authController.logout);
 module.exports = router;

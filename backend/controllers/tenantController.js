@@ -1,258 +1,100 @@
+'use strict';
 const Tenant = require('../models/Tenant');
 const Property = require('../models/Property');
 const Payment = require('../models/Payment');
+const UserSettings = require('../models/UserSettings');
+const Drive = require('../services/driveStore');
 const { AppError } = require('../middleware/errorHandler');
-const { transaction } = require('../config/database');
+const { newId } = require('../utils/id');
 
-function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+/** Resolves a property + room that really exist (room NUMBERS, not a count). */
+async function resolveRoom(propertyId, roomNumber, userId) {
+  const property = await Property.findById(propertyId, userId);
+  if (!property) throw new AppError('Property not found', 404);
+  const room = (await Property.getRooms(propertyId, userId)).find((r) => Number(r.room_number) === Number(roomNumber));
+  if (!room) throw new AppError(`Room ${roomNumber} does not exist in this property`, 404);
+  return { property, room };
 }
 
 const tenantController = {
-    async getAll(req, res, next) {
-        try {
-            const tenants = await Tenant.findAll(req.userId);
-            res.json({
-                success: true,
-                data: tenants
-            });
-        } catch (error) {
-            next(error);
+  async getAll(req, res, next) {
+    try { res.json({ success: true, data: await Tenant.findAll(req.userId) }); } catch (e) { next(e); }
+  },
+  async getById(req, res, next) {
+    try {
+      const tenant = await Tenant.findById(req.params.id, req.userId);
+      if (!tenant) throw new AppError('Tenant not found', 404);
+      res.json({ success: true, data: tenant });
+    } catch (e) { next(e); }
+  },
+
+  /** Archives every tenant (and their payments) into the recycle bin in one atomic write. */
+  async clearAll(req, res, next) {
+    try {
+      await Drive.transaction(async () => {
+        for (const tenant of await Tenant.findAll(req.userId)) await Tenant.delete(tenant.id, req.userId);
+      });
+      res.json({ success: true, message: 'All tenants deleted successfully' });
+    } catch (e) { next(e); }
+  },
+
+  async create(req, res, next) {
+    try {
+      const data = req.body;
+      // Tenant, room assignment and first payment commit together or not at all.
+      const tenant = await Drive.transaction(async () => {
+        if (await Tenant.findByCNIC(data.cnic, req.userId)) throw new AppError('CNIC already registered', 400);
+        const status = data.status || 'active';
+        const { property, room } = await resolveRoom(data.propertyId, data.roomNumber, req.userId);
+        if (status === 'active' && room.status === 'occupied' && room.tenant_id) throw new AppError('Room is already occupied', 400);
+
+        const created = await Tenant.create({ ...data, status, roomNumber: Number(data.roomNumber), id: newId() }, req.userId);
+        if (status === 'active') {
+          const d = await Drive.getData();
+          const { month, year } = UserSettings.periodFor(d);
+          const rent = Number(room.rent_amount || property.base_rent || 0);
+          await Payment.create({
+            tenantId: created.id, month, year, monthlyRent: rent, electricity: 0, gas: 0, previousDues: 0,
+            amountPaid: 0, customCharges: [], notes: 'Initial payment for new tenant'
+          }, req.userId);
         }
-    },
+        return created;
+      });
+      res.status(201).json({ success: true, data: tenant, message: 'Tenant created successfully with initial payment record' });
+    } catch (e) { next(e); }
+  },
 
-    async getById(req, res, next) {
-        try {
-            const { id } = req.params;
-            const tenant = await Tenant.findById(id, req.userId);
-            
-            if (!tenant) {
-                throw new AppError('Tenant not found', 404);
-            }
-            
-            res.json({
-                success: true,
-                data: tenant
-            });
-        } catch (error) {
-            next(error);
+  async update(req, res, next) {
+    try {
+      const { id } = req.params;
+      const data = req.body;
+      const tenant = await Drive.transaction(async () => {
+        const existing = await Tenant.findById(id, req.userId);
+        if (!existing) throw new AppError('Tenant not found', 404);
+        const cnicOwner = await Tenant.findByCNIC(data.cnic, req.userId);
+        if (cnicOwner && cnicOwner.id !== id) throw new AppError('CNIC already registered to another tenant', 400);
+
+        const finalStatus = data.status || existing.status || 'active';
+        const { room } = await resolveRoom(data.propertyId, data.roomNumber, req.userId);
+        // Only an ACTIVE tenant needs the room to be free; an inactive tenant just keeps a historical reference.
+        if (finalStatus === 'active' && room.status === 'occupied' && room.tenant_id && room.tenant_id !== id) {
+          throw new AppError('Room is already occupied by another tenant', 400);
         }
-    },
+        return Tenant.update(id, { ...data, status: finalStatus, roomNumber: Number(data.roomNumber) }, req.userId);
+      });
+      res.json({ success: true, data: tenant, message: 'Tenant updated successfully' });
+    } catch (e) { next(e); }
+  },
 
-    async clearAll(req, res, next) {
-        try {
-            await transaction(async (db) => {
-                const tenants = await Tenant.findAll(req.userId, db);
-                for (const tenant of tenants) {
-                    if (tenant.property_id && tenant.room_number) {
-                        await Property.updateRoom(tenant.property_id, tenant.room_number, { status: 'available', tenantId: null }, db);
-                    }
-                    await Tenant.delete(tenant.id, req.userId, db);
-                }
-            });
-            res.json({ success: true, message: 'All tenants deleted successfully' });
-        } catch (error) {
-            next(error);
-        }
-    },
+  async delete(req, res, next) {
+    try {
+      await Tenant.delete(req.params.id, req.userId);
+      res.json({ success: true, message: 'Tenant deleted successfully' });
+    } catch (e) { next(e); }
+  },
 
-    async create(req, res, next) {
-        try {
-            const data = req.body;
-
-            // Keep the tenant insert, room assignment, and initial payment in
-            // one transaction. All reads used to validate the room are made
-            // through the same transaction connection as the writes.
-            const tenant = await transaction(async (db) => {
-                const existing = await Tenant.findByCNIC(data.cnic, req.userId, db);
-                if (existing) {
-                    throw new AppError('CNIC already registered', 400);
-                }
-
-                if (!data.propertyId || !data.roomNumber) {
-                    throw new AppError('Property and room are required', 400);
-                }
-
-                const property = await Property.findById(data.propertyId, req.userId, db);
-                if (!property) {
-                    throw new AppError('Property not found', 404);
-                }
-
-                const roomNumber = parseInt(data.roomNumber, 10);
-                if (roomNumber < 1 || roomNumber > property.total_rooms) {
-                    throw new AppError(`Room number must be between 1 and ${property.total_rooms}`, 400);
-                }
-
-                const rooms = await Property.getRooms(data.propertyId, db);
-                const room = rooms.find(r => r.room_number === roomNumber);
-                if (!room) {
-                    throw new AppError('Room not found in this property', 404);
-                }
-                if (room.status === 'occupied' && room.tenant_id) {
-                    throw new AppError('Room is already occupied', 400);
-                }
-
-                const baseRent = Number(room.rent_amount || property.base_rent || 0);
-                const created = await Tenant.create({
-                    id: generateId(),
-                    ...data,
-                    roomNumber,
-                    documents: data.documents || []
-                }, req.userId, db);
-
-                await Property.updateRoom(data.propertyId, roomNumber, {
-                    status: 'occupied',
-                    tenantId: created.id
-                }, db);
-
-                const currentMonth = new Date().getMonth() + 1;
-                const currentYear = new Date().getFullYear();
-                await Payment.create({
-                    id: generateId(),
-                    tenantId: created.id,
-                    month: currentMonth,
-                    year: currentYear,
-                    monthlyRent: baseRent,
-                    electricity: 0,
-                    gas: 0,
-                    previousDues: 0,
-                    totalPayment: baseRent,
-                    amountPaid: 0,
-                    customCharges: [],
-                    status: 'unpaid',
-                    notes: 'Initial payment for new tenant'
-                }, req.userId, db);
-
-                return created;
-            });
-
-            res.status(201).json({
-                success: true,
-                data: tenant,
-                message: 'Tenant created successfully with initial payment record'
-            });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async update(req, res, next) {
-        try {
-            const { id } = req.params;
-            const data = req.body;
-
-            const tenant = await transaction(async (db) => {
-                const existing = await Tenant.findById(id, req.userId, db);
-                if (!existing) {
-                    throw new AppError('Tenant not found', 404);
-                }
-
-                const cnicCheck = await Tenant.findByCNIC(data.cnic, req.userId, db);
-                if (cnicCheck && cnicCheck.id !== id) {
-                    throw new AppError('CNIC already registered to another tenant', 400);
-                }
-
-                const targetPropertyId = data.propertyId || null;
-                const targetRoomNumber = data.roomNumber ? parseInt(data.roomNumber, 10) : null;
-
-                if (!targetPropertyId || !targetRoomNumber) {
-                    throw new AppError('Property and room are required', 400);
-                }
-
-                const property = await Property.findById(targetPropertyId, req.userId, db);
-                if (!property) {
-                    throw new AppError('Property not found', 404);
-                }
-                if (targetRoomNumber < 1 || targetRoomNumber > property.total_rooms) {
-                    throw new AppError(`Room number must be between 1 and ${property.total_rooms}`, 400);
-                }
-
-                const rooms = await Property.getRooms(targetPropertyId, db);
-                const targetRoom = rooms.find(r => r.room_number === targetRoomNumber);
-                if (!targetRoom) {
-                    throw new AppError('Room not found in this property', 404);
-                }
-                if (targetRoom.status === 'occupied' && targetRoom.tenant_id && targetRoom.tenant_id !== id) {
-                    throw new AppError('Room is already occupied by another tenant', 400);
-                }
-
-                const sameRoom = existing.property_id === targetPropertyId && Number(existing.room_number) === targetRoomNumber;
-                const finalStatus = data.status || existing.status || 'active';
-
-                if (!sameRoom && existing.property_id && existing.room_number) {
-                    await Property.updateRoom(existing.property_id, existing.room_number, {
-                        status: 'available',
-                        tenantId: null
-                    }, db);
-                }
-
-                if (finalStatus === 'active') {
-                    await Property.updateRoom(targetPropertyId, targetRoomNumber, {
-                        status: 'occupied',
-                        tenantId: id
-                    }, db);
-                } else {
-                    await Property.updateRoom(targetPropertyId, targetRoomNumber, {
-                        status: 'available',
-                        tenantId: null
-                    }, db);
-                }
-
-                return await Tenant.update(id, { ...data, status: finalStatus, roomNumber: targetRoomNumber }, req.userId, db);
-            });
-
-            res.json({
-                success: true,
-                data: tenant,
-                message: 'Tenant updated successfully'
-            });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async delete(req, res, next) {
-        try {
-            const { id } = req.params;
-            
-            const existing = await Tenant.findById(id, req.userId);
-            if (!existing) {
-                throw new AppError('Tenant not found', 404);
-            }
-            
-            const tenant = await transaction(async (db) => {
-                if (existing.property_id && existing.room_number) {
-                    await Property.updateRoom(existing.property_id, existing.room_number, {
-                        status: 'available',
-                        tenantId: null
-                    }, db);
-                }
-                
-                return await Tenant.delete(id, req.userId, db);
-            });
-            
-            res.json({
-                success: true,
-                message: 'Tenant deleted successfully'
-            });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async getByProperty(req, res, next) {
-        try {
-            const { propertyId } = req.params;
-            const tenants = await Tenant.findByProperty(propertyId, req.userId);
-            
-            res.json({
-                success: true,
-                data: tenants
-            });
-        } catch (error) {
-            next(error);
-        }
-    }
+  async getByProperty(req, res, next) {
+    try { res.json({ success: true, data: await Tenant.findByProperty(req.params.propertyId, req.userId) }); } catch (e) { next(e); }
+  }
 };
-
 module.exports = tenantController;

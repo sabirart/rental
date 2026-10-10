@@ -20,7 +20,6 @@ const Recycle = {
         this._isLoading = true;
         try {
             const response = await API.request('/recycle');
-            console.log('Recycle items loaded:', response);
             this.items = response.data || [];
             return this.items;
         } catch (error) {
@@ -44,16 +43,12 @@ const Recycle = {
         if (!container) return;
         
         // Debug log to check items
-        console.log('Current items:', this.items);
-        console.log('Current tab:', this.currentTab);
         
         // Get the singular type for filtering
         const filterType = this.getTypeForFilter(this.currentTab);
         
         // Get items for current tab
         const filtered = this.items.filter(item => item.type === filterType);
-        console.log('Filtered items:', filtered);
-        console.log('Filter type used:', filterType);
         
         let html = `
             <div class="recycle-tabs">
@@ -300,7 +295,7 @@ const Recycle = {
         header.className = 'recycle-box-header';
         header.innerHTML = `
             <h3>Recycle Bin</h3>
-            <button class="recycle-close" onclick="Recycle.closeOverlay()">&times;</button>
+            <button type="button" class="recycle-close" data-rm-action="close-recycle" aria-label="Close recycle bin">&times;</button>
         `;
         
         // Body

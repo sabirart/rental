@@ -48,7 +48,7 @@ const Payments = {
             const property = tenant ? properties.find(p => p.id === tenant.property_id) : null;
             const roomInfo = tenant && property ? `Room ${escapeHTML(String(tenant.room_number))}` : 'N/A';
             
-            const statusMap = { paid: 'success', partial: 'warning', unpaid: 'danger' };
+            const statusMap = { paid: 'success', partial: 'warning', unpaid: 'danger', unbilled: 'info' };
             const statusBadge = `<span class="badge badge-${statusMap[payment.status] || 'danger'}">${escapeHTML(payment.status)}</span>`;
             const remainingNote = payment.status === 'partial'
                 ? `Received ${formatCurrency(payment.amount_paid || 0)} · Owes ${formatCurrency(Math.max(0, (payment.total_payment || 0) - (payment.amount_paid || 0)))}`

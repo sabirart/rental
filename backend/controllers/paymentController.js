@@ -1,178 +1,98 @@
+'use strict';
 const Payment = require('../models/Payment');
 const Tenant = require('../models/Tenant');
+const Drive = require('../services/driveStore');
 const { AppError } = require('../middleware/errorHandler');
+const { newId } = require('../utils/id');
 
-function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-}
+const isPlaceholder = (p) => p.placeholder === true;
 
 const paymentController = {
-    async getAll(req, res, next) {
-        try {
-            await Payment.ensureCurrentMonthPayments(req.userId);
-            const { month, year, tenantId } = req.query;
-            const payments = await Payment.findAll(req.userId, { month, year, tenantId });
-            res.json({ success: true, data: payments });
-        } catch (error) {
-            next(error);
+  // Reads never write. The month's rows are created by POST /rollover.
+  async getAll(req, res, next) {
+    try {
+      const { month, year, tenantId } = req.query;
+      res.json({ success: true, data: await Payment.findAll(req.userId, { month, year, tenantId }) });
+    } catch (e) { next(e); }
+  },
+  async getById(req, res, next) {
+    try {
+      const payment = await Payment.findById(req.params.id, req.userId);
+      if (!payment) throw new AppError('Payment not found', 404);
+      res.json({ success: true, data: payment });
+    } catch (e) { next(e); }
+  },
+
+  async rollover(req, res, next) {
+    try { res.json({ success: true, data: await Payment.rollover(req.userId) }); } catch (e) { next(e); }
+  },
+
+  async create(req, res, next) {
+    try {
+      const data = req.body;
+      const result = await Drive.transaction(async () => {
+        if (!(await Tenant.findById(data.tenantId, req.userId))) throw new AppError('Tenant not found', 404);
+        const existing = await Payment.findAll(req.userId, { tenantId: data.tenantId, month: data.month, year: data.year });
+        // The auto-created row for the current period is a placeholder to fill in, not a duplicate.
+        const placeholder = existing.find(isPlaceholder);
+        if (existing.length && !placeholder) {
+          throw new AppError('A payment record already exists for this tenant for the selected month and year. Open it from Payment History to update it.', 400);
         }
-    },
+        const payment = placeholder
+          ? await Payment.update(placeholder.id, data, req.userId)
+          : await Payment.create({ ...data, id: newId() }, req.userId);
+        return { payment, filled: !!placeholder };
+      });
+      res.status(result.filled ? 200 : 201).json({ success: true, data: result.payment, message: 'Payment recorded successfully' });
+    } catch (e) { next(e); }
+  },
 
-    async getById(req, res, next) {
-        try {
-            const { id } = req.params;
-            const payment = await Payment.findById(id, req.userId);
-            if (!payment) throw new AppError('Payment not found', 404);
-            res.json({ success: true, data: payment });
-        } catch (error) {
-            next(error);
-        }
-    },
+  async update(req, res, next) {
+    try {
+      const { id } = req.params;
+      if (!(await Payment.findById(id, req.userId))) throw new AppError('Payment not found', 404);
+      if (!(await Tenant.findById(req.body.tenantId, req.userId))) throw new AppError('Tenant not found', 404);
+      res.json({ success: true, data: await Payment.update(id, req.body, req.userId), message: 'Payment updated successfully' });
+    } catch (e) { next(e); }
+  },
 
-    async create(req, res, next) {
-        try {
-            const data = req.body;
-            
-            const tenant = await Tenant.findById(data.tenantId, req.userId);
-            if (!tenant) throw new AppError('Tenant not found', 404);
-            if (!data.month || data.month < 1 || data.month > 12) throw new AppError('Month must be between 1 and 12', 400);
-            if (!data.year || data.year < 2000 || data.year > 2100) throw new AppError('Year must be between 2000 and 2100', 400);
-            if (data.monthlyRent === undefined || data.monthlyRent === null || Number(data.monthlyRent) < 0) throw new AppError('Monthly rent must be a non-negative number', 400);
-            
-            const existing = await Payment.findAll(req.userId, { tenantId: data.tenantId, month: data.month, year: data.year });
-            // The app pre-creates a zero-value row for each active tenant in the
-            // current month. Treat that row as a placeholder to fill, not as a
-            // duplicate that blocks the Record Payment workflow.
-            const placeholderId = `${data.tenantId}-${Number(data.year)}-${Number(data.month)}`;
-            const placeholder = existing.find(p => p.id === placeholderId &&
-                Number(p.monthly_rent || 0) === 0 && Number(p.electricity || 0) === 0 &&
-                Number(p.gas || 0) === 0 && Number(p.previous_dues || 0) === 0 && !p.notes);
-            if (existing.length > 0 && !placeholder) {
-                throw new AppError('A payment record already exists for this tenant for the selected month and year. Open it from Payment History to update it.', 400);
-            }
-            
-            const totalPayment = (Number(data.monthlyRent) || 0) + (Number(data.electricity) || 0) + (Number(data.gas) || 0) + (Number(data.previousDues) || 0);
+  async delete(req, res, next) {
+    try {
+      await Payment.delete(req.params.id, req.userId);
+      res.json({ success: true, message: 'Payment deleted successfully' });
+    } catch (e) { next(e); }
+  },
 
-            if (data.amountPaid !== undefined && data.amountPaid !== null && data.amountPaid !== '') {
-                if (Number(data.amountPaid) < 0) throw new AppError('Amount paid cannot be negative', 400);
-                if (Number(data.amountPaid) > totalPayment) throw new AppError('Amount paid cannot be greater than the total amount due', 400);
-            }
-            
-            let payment;
-            try {
-                const payload = { ...data, totalPayment };
-                payment = placeholder
-                    ? await Payment.update(placeholder.id, payload, req.userId)
-                    : await Payment.create({ id: generateId(), ...payload }, req.userId);
-            } catch (modelError) {
-                // Payment.create throws plain Errors for amount/status
-                // consistency problems (e.g. "partial" with no amount) -
-                // surface those as a normal 400 instead of a generic 500.
-                throw new AppError(modelError.message, 400);
-            }
-            
-            res.status(placeholder ? 200 : 201).json({ success: true, data: payment, message: 'Payment recorded successfully' });
-        } catch (error) {
-            next(error);
-        }
-    },
+  /** Destructive: needs ?confirm=yes and always takes a recovery snapshot first. */
+  async clearAll(req, res, next) {
+    try {
+      if (req.query.confirm !== 'yes') throw new AppError('Confirmation required: this permanently removes every payment record. Resend with confirm=yes.', 400, 'CONFIRMATION_REQUIRED');
+      await Drive.mutate(async (data) => {
+        await Drive.snapshotBeforeChange(data, 'pre-clear-payments');
+        data.payments = data.payments.filter((p) => p.user_id !== req.userId);
+      });
+      res.json({ success: true, message: 'All payments cleared successfully' });
+    } catch (e) { next(e); }
+  },
 
-    async update(req, res, next) {
-        try {
-            const { id } = req.params;
-            const data = req.body;
-            
-            const existing = await Payment.findById(id, req.userId);
-            if (!existing) throw new AppError('Payment not found', 404);
-            
-            const tenant = await Tenant.findById(data.tenantId, req.userId);
-            if (!tenant) throw new AppError('Tenant not found', 404);
-            if (!data.month || data.month < 1 || data.month > 12) throw new AppError('Month must be between 1 and 12', 400);
-            if (!data.year || data.year < 2000 || data.year > 2100) throw new AppError('Year must be between 2000 and 2100', 400);
-            if (data.monthlyRent === undefined || data.monthlyRent === null || Number(data.monthlyRent) < 0) throw new AppError('Monthly rent must be a non-negative number', 400);
-            
-            const duplicates = await Payment.findAll(req.userId, { tenantId: data.tenantId, month: data.month, year: data.year });
-            if (duplicates.some(p => p.id !== id)) throw new AppError('Payment already exists for this tenant for this month/year', 400);
-            
-            const totalPayment = (data.monthlyRent || 0) + (data.electricity || 0) + (data.gas || 0) + (data.previousDues || 0);
-
-            if (data.amountPaid !== undefined && data.amountPaid !== null && data.amountPaid !== '') {
-                if (Number(data.amountPaid) < 0) throw new AppError('Amount paid cannot be negative', 400);
-                if (Number(data.amountPaid) > totalPayment) throw new AppError('Amount paid cannot be greater than the total amount due', 400);
-            }
-            
-            let payment;
-            try {
-                payment = await Payment.update(id, { ...data, totalPayment }, req.userId);
-            } catch (modelError) {
-                throw new AppError(modelError.message, 400);
-            }
-            
-            res.json({ success: true, data: payment, message: 'Payment updated successfully' });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async delete(req, res, next) {
-        try {
-            const { id } = req.params;
-            const existing = await Payment.findById(id, req.userId);
-            if (!existing) throw new AppError('Payment not found', 404);
-            await Payment.delete(id, req.userId);
-            res.json({ success: true, message: 'Payment deleted successfully' });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async clearAll(req, res, next) {
-        try {
-            await Payment.clearAll(req.userId);
-            res.json({ success: true, message: 'All payments cleared successfully' });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async getByTenant(req, res, next) {
-        try {
-            const { tenantId } = req.params;
-            const tenant = await Tenant.findById(tenantId, req.userId);
-            if (!tenant) throw new AppError('Tenant not found', 404);
-            const payments = await Payment.findByTenant(tenantId, req.userId);
-            res.json({ success: true, data: payments });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async getDashboardStats(req, res, next) {
-        try {
-            await Payment.ensureCurrentMonthPayments(req.userId);
-            const stats = await Payment.getDashboardStats(req.userId);
-            res.json({ success: true, data: stats });
-        } catch (error) {
-            next(error);
-        }
-    },
-
-    async getMonthlySummary(req, res, next) {
-        try {
-            const { year, month } = req.query;
-            if (!year || !month) throw new AppError('Year and month are required', 400);
-            
-            const yearNum = parseInt(year);
-            const monthNum = parseInt(month);
-            if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) throw new AppError('Year must be between 2000 and 2100', 400);
-            if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) throw new AppError('Month must be between 1 and 12', 400);
-            
-            const summary = await Payment.getMonthlySummary(yearNum, monthNum, req.userId);
-            res.json({ success: true, data: summary });
-        } catch (error) {
-            next(error);
-        }
-    }
+  async getByTenant(req, res, next) {
+    try {
+      if (!(await Tenant.findById(req.params.tenantId, req.userId))) throw new AppError('Tenant not found', 404);
+      res.json({ success: true, data: await Payment.findByTenant(req.params.tenantId, req.userId) });
+    } catch (e) { next(e); }
+  },
+  async getDashboardStats(req, res, next) {
+    try { res.json({ success: true, data: await Payment.getDashboardStats(req.userId) }); } catch (e) { next(e); }
+  },
+  async getMonthlySummary(req, res, next) {
+    try {
+      const year = parseInt(req.query.year, 10);
+      const month = parseInt(req.query.month, 10);
+      if (!req.query.year || !req.query.month) throw new AppError('Year and month are required', 400);
+      if (Number.isNaN(year) || year < 2000 || year > 2100) throw new AppError('Year must be between 2000 and 2100', 400);
+      if (Number.isNaN(month) || month < 1 || month > 12) throw new AppError('Month must be between 1 and 12', 400);
+      res.json({ success: true, data: await Payment.getMonthlySummary(year, month, req.userId) });
+    } catch (e) { next(e); }
+  }
 };
-
 module.exports = paymentController;

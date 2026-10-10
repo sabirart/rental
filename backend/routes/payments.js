@@ -7,6 +7,7 @@ const authMiddleware = require('../middleware/auth');
 router.use(authMiddleware.authenticate);
 
 router.get('/', paymentController.getAll);
+router.post('/rollover', paymentController.rollover);
 router.get('/dashboard-stats', paymentController.getDashboardStats);
 router.get('/monthly-summary', paymentController.getMonthlySummary);
 router.get('/tenant/:tenantId', paymentController.getByTenant);

@@ -1,4 +1,4 @@
-// js/api.js - FIXED: Properly sends auth token with all requests
+// js/api.js - API client (cookie based session; see Auth)
 
 const API = {
     get baseURL() {
@@ -43,41 +43,27 @@ const API = {
         const url = `${this.baseURL}${endpoint}`;
         const options = {
             method,
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             credentials: 'include'
         };
 
-        // IMPORTANT: Always attach the auth token to every request
         const authenticated = window.Auth?.isAuthenticated === true;
         if (!authenticated && !endpoint.includes('/auth/') && !endpoint.includes('/health')) {
             throw new Error('Please continue with Google to access your saved data.');
         }
+        if (data) options.body = JSON.stringify(data);
 
-        if (data) {
-            options.body = JSON.stringify(data);
-        }
-
-        // Google Drive access tokens are short-lived. Refresh silently before
-        // every protected application-data request so a page left open or
-        // reloaded later does not look authenticated while its Drive token
-        // has already expired. The refresh function is a no-op until Google
-        // Identity Services is available/consented.
-        if (authenticated && !endpoint.startsWith('/auth/') && !endpoint.startsWith('/health')) {
-            try { await window.refreshGoogleDriveAccess?.(); } catch (_) {}
-        }
+        // Only reads are retried automatically. Replaying a create/update/delete after a
+        // lost response could duplicate or double-apply it, so writes fail fast instead.
+        if (method !== 'GET') retries = 0;
 
         let lastError = null;
         let got401 = false;
 
         for (let attempt = 0; attempt <= retries; attempt++) {
             try {
-                console.log(`API Request: ${method} ${url} (attempt ${attempt + 1})`);
-                
                 const response = await fetch(url, options);
-                
-                // Check if response is ok before parsing JSON
+
                 if (!response.ok) {
                     let errorMessage = `HTTP ${response.status}`;
                     try {
@@ -86,72 +72,44 @@ const API = {
                     } catch (e) {
                         errorMessage = response.statusText || errorMessage;
                     }
-                    
-                    // Handle authentication errors. A 401 right after a page
-                    // load/refresh can be a transient false positive (server
-                    // still waking up, brief DB hiccup) rather than a truly
-                    // dead session, so we retry once before treating it as a
-                    // real session expiry.
-                    //
-                    // Important: users must only ever be logged out when they
-                    // explicitly choose to (Auth.logout()). A dead/expired
-                    // token here must NOT clear the stored session or force
-                    // any navigation - we just let the user know so they can
-                    // continue with Google again if needed, while everything
-                    // they already have on screen (including cached data)
-                    // stays exactly as it was.
+
+                    // A 401 right after load can be a transient false positive (server waking
+                    // from a cold start), so a read is retried once before the session is
+                    // treated as expired. Users are only ever logged out by Auth.logout():
+                    // an expired session just prompts them, and their on-screen data stays.
                     if (response.status === 401) {
                         if (!got401 && attempt < retries) {
                             got401 = true;
                             await new Promise(resolve => setTimeout(resolve, 800));
                             continue;
                         }
-
                         if (!this._sessionExpiredNotified) {
                             this._sessionExpiredNotified = true;
                             this._showSessionExpiredAlert();
-                            // Give the API a fresh shot at re-notifying if the
-                            // user does log back in and it expires again later.
                             setTimeout(() => { this._sessionExpiredNotified = false; }, 60000);
                         }
-                        throw new Error('Your Google session expired. Please continue with Google again.');
+                        const expired = new Error('Your Google session expired. Please continue with Google again.');
+                        expired.status = 401;
+                        throw expired;
                     }
 
-                    // 503 (Service Unavailable) / 504 (Gateway Timeout) usually
-                    // mean the backend is temporarily unreachable/cold-starting
-                    // rather than a real failure, so auto-retry with backoff
-                    // before giving up and falling back to cached data.
+                    const httpError = new Error(errorMessage);
+                    httpError.status = response.status;
+                    // 503/504 usually mean the backend is cold-starting: back off and retry reads.
                     if ((response.status === 503 || response.status === 504) && attempt < retries) {
-                        const delay = 1000 * (attempt + 1);
-                        console.log(`Got ${response.status}, auto-retrying in ${delay}ms...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
+                        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
                         continue;
                     }
-
-                    throw new Error(errorMessage);
+                    throw httpError;
                 }
 
-                const result = await response.json();
-                return result;
-                
+                return await response.json();
             } catch (error) {
                 lastError = error;
-                console.error(`API Error (attempt ${attempt + 1}/${retries + 1}):`, error.message);
-                
-                // Don't retry on authentication or validation errors
-                if (error.message.includes('Authentication required') ||
-                    error.message.includes('401') || 
-                    error.message.includes('400') || 
-                    error.message.includes('validation') || 
-                    error.message.includes('required')) {
-                    break;
-                }
-                
-                // Retry for network errors
+                // Client errors (4xx) are final; only network failures / 5xx are worth retrying.
+                if (error.status && error.status < 500) break;
                 if (attempt < retries) {
-                    const delay = 1000 * (attempt + 1);
-                    console.log(`Retrying in ${delay}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
+                    await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
                     continue;
                 }
             }
@@ -230,6 +188,16 @@ const API = {
         });
     },
 
+    // Single atomic "clear everything" (server takes a recovery snapshot first)
+    async clearAllData() {
+        return this.request('/settings/data', 'DELETE');
+    },
+
+    // Creates this period's rows for active tenants (idempotent; replaces writes that used to happen inside GETs)
+    async rolloverPayments() {
+        return this.request('/payments/rollover', 'POST');
+    },
+
     // Clear all data endpoints
     async deleteAllTenants() {
         return this.request('/tenants/clear', 'DELETE');
@@ -240,7 +208,7 @@ const API = {
     },
 
     async deleteAllPayments() {
-        return this.request('/payments/clear', 'DELETE');
+        return this.request('/payments/clear?confirm=yes', 'DELETE');
     },
     
     // Tenant endpoints
@@ -292,7 +260,22 @@ const API = {
         return this.request(`/properties/${id}`, 'DELETE');
     },
     
+    // Demo mode has no server: derive the room list from the sample properties/tenants.
+    _demoRooms(propertyId) {
+        const property = (window.App?.state?.properties || []).find(p => p.id === propertyId);
+        if (!property) return [];
+        const tenants = (window.App?.state?.tenants || []).filter(t => t.property_id === propertyId && t.status === 'active');
+        const rooms = [];
+        for (let n = 1; n <= (property.total_rooms || 0); n++) {
+            const tenant = tenants.find(t => Number(t.room_number) === n);
+            rooms.push({ id: `${propertyId}-room-${n}`, property_id: propertyId, room_number: n, room_name: `Room ${n}`,
+                status: tenant ? 'occupied' : 'available', tenant_id: tenant ? tenant.id : null, rent_amount: property.base_rent || 0 });
+        }
+        return rooms;
+    },
+
     async getPropertyRooms(id) {
+        if (typeof isDemoMode === 'function' && isDemoMode()) return { success: true, data: this._demoRooms(id) };
         return this.request(`/properties/${id}/rooms`);
     },
     

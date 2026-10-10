@@ -941,8 +941,8 @@ const Properties = {
                                 <span style="margin-left: 12px; font-size: 0.8rem; color: var(--text-light);">${formatCurrency(room.rent_amount || property.base_rent)}</span>
                             </div>
                             <div class="room-actions">
-                                <button class="btn btn-sm btn-outline" onclick="Properties.editRoom('${propertyId}', ${room.room_number})">Edit</button>
-                                ${room.status !== 'occupied' ? `<button class="btn btn-sm btn-danger" onclick="Properties.removeRoom('${propertyId}', ${room.room_number})">Remove</button>` : ''}
+                                <button type="button" class="btn btn-sm btn-outline" data-rm-action="room-edit" data-property-id="${escapeHTML(propertyId)}" data-room="${Number(room.room_number)}">Edit</button>
+                                ${room.status !== 'occupied' ? `<button type="button" class="btn btn-sm btn-danger" data-rm-action="room-remove" data-property-id="${escapeHTML(propertyId)}" data-room="${Number(room.room_number)}">Remove</button>` : ''}
                             </div>
                         </div>
                     `;
@@ -960,7 +960,7 @@ const Properties = {
                         <input type="number" class="form-control" id="newRoomNumber" placeholder="Room Number" min="1" style="flex: 1; min-width: 100px;">
                         <input type="text" class="form-control" id="newRoomName" placeholder="Room Name" style="flex: 1; min-width: 120px;">
                         <input type="number" class="form-control" id="newRoomRent" placeholder="Rent" style="width: 120px;">
-                        <button class="btn btn-primary" onclick="Properties.addRoom('${propertyId}')">Add</button>
+                        <button type="button" class="btn btn-primary" data-rm-action="room-add" data-property-id="${escapeHTML(propertyId)}">Add</button>
                     </div>
                 </div>
                 <div style="margin-top: 16px;">
@@ -1001,7 +1001,7 @@ const Properties = {
                         <input type="number" class="form-control" id="editRoomRent" value="${room.rent_amount || 0}" min="0">
                     </div>
                     <div class="form-actions">
-                        <button class="btn btn-primary" onclick="Properties.updateRoom('${propertyId}', ${roomNumber})" id="roomSubmitBtn">Update</button>
+                        <button type="button" class="btn btn-primary" data-rm-action="room-update" data-property-id="${escapeHTML(propertyId)}" data-room="${Number(roomNumber)}" id="roomSubmitBtn">Update</button>
                     </div>
                 `;
                 App.openModal('Edit Room', form);

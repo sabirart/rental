@@ -7,6 +7,7 @@ const App = {
         payments: [],
         currentView: 'dashboard',
         isLoading: false,
+        settings: null,
         isOnline: navigator.onLine
     },
     
@@ -76,43 +77,57 @@ const App = {
             }
         }
     },
-    // options.silent = true: used for background refreshes (initial load,
-    // tab-focus refresh, keep-alive-triggered refresh) - cached data is
-    // already on screen, so no loading spinner and no "please login" toast
-    // on failure; the user simply keeps seeing whatever was last cached.
-    async loadData(options = {}) {
+    // options.silent = true: background refresh (initial load, tab focus, keep-alive) - cached
+    // data is already on screen, so no spinner and no toast on failure.
+    //
+    // Single-flight: overlapping calls (init + auth listener + tab focus + after a save) share
+    // one request cycle. A call that arrives while a load is running schedules exactly one
+    // follow-up load, so data saved mid-flight is never shown stale.
+    loadData(options = {}) {
+        if (this._inflight) { this._rerun = true; return this._inflight; }
+        const run = async () => {
+            await this._loadOnce(options);
+            while (this._rerun) { this._rerun = false; await this._loadOnce({ silent: true }); }
+        };
+        this._inflight = run().finally(() => { this._inflight = null; });
+        return this._inflight;
+    },
+
+    async _loadOnce(options = {}) {
         const silent = options.silent === true;
         if (!silent) this.showLoading();
         try {
-            // Check if in demo mode
             if (isDemoMode()) {
-                // Use sample data
                 const sampleData = getSampleData();
                 this.state.tenants = sampleData.tenants || [];
                 this.state.properties = sampleData.properties || [];
                 this.state.payments = sampleData.payments || [];
                 this.saveToLocalStorage();
-                if (!silent) this.hideLoading();
                 if (silent) this.renderCurrentView();
                 return;
             }
-            
-            // Normal API calls for authenticated users
-            const [tenantsRes, propertiesRes, paymentsRes] = await Promise.all([
+
+            // Make sure this billing period's rows exist (one idempotent write), then read.
+            // A failed rollover must not block showing data.
+            try { await API.rolloverPayments(); } catch (e) { if (e.status === 401) throw e; }
+
+            const [tenantsRes, propertiesRes, paymentsRes, settingsRes] = await Promise.all([
                 API.getTenants(),
                 API.getProperties(),
-                API.getPayments()
+                API.getPayments(),
+                API.getSettings().catch(() => null)
             ]);
             this.state.tenants = tenantsRes.data || [];
             this.state.properties = propertiesRes.data || [];
             this.state.payments = paymentsRes.data || [];
+            if (settingsRes && settingsRes.data) {
+                this.state.settings = settingsRes.data;
+                try { localStorage.setItem('monthly_reset_day', String(settingsRes.data.monthlyResetDay)); } catch (_) {}
+            }
             this.saveToLocalStorage();
-            // Silent refreshes still need to update the screen once the
-            // fresher data arrives - just without the loading spinner/toast
-            // that a foreground load would show.
             if (silent) this.renderCurrentView();
         } catch (error) {
-            console.error('Failed to load data:', error);
+            console.error('Failed to load data:', error.message);
             this.loadFromLocalStorage();
             if (!silent) showNotification('Continue with Google to save your data permanently', 'info');
         } finally {
@@ -148,20 +163,31 @@ const App = {
         }, 10 * 60 * 1000);
     },
 
+    // Offline/first-paint cache. It is scoped to the signed-in Google account (cache_owner),
+    // removed on sign-out (Auth.clear) and never stores images or document bodies - those
+    // are the sensitive parts (ID scans, photos) and are re-fetched from the server.
+    _cacheSafeTenants(tenants) {
+        return (tenants || []).map((t) => ({
+            ...t,
+            profile_pic: null,
+            documents: (t.documents || []).map(({ name, type, size }) => ({ name, type, size }))
+        }));
+    },
+
     saveToLocalStorage() {
+        if (isDemoMode()) return;
         try {
-            localStorage.setItem('tenants_cache', JSON.stringify(this.state.tenants));
+            localStorage.setItem('tenants_cache', JSON.stringify(this._cacheSafeTenants(this.state.tenants)));
             localStorage.setItem('properties_cache', JSON.stringify(this.state.properties));
             localStorage.setItem('payments_cache', JSON.stringify(this.state.payments));
+            if (Auth.user?.id) localStorage.setItem('cache_owner', Auth.user.id);
         } catch (e) {
-            console.error('Failed to save to localStorage:', e);
+            console.warn('Could not cache data locally:', e.message);
         }
     },
 
-    // Replace the loadFromLocalStorage method
     loadFromLocalStorage() {
         try {
-            // Check if in demo mode
             if (isDemoMode()) {
                 const sampleData = getSampleData();
                 this.state.tenants = sampleData.tenants || [];
@@ -169,7 +195,12 @@ const App = {
                 this.state.payments = sampleData.payments || [];
                 return;
             }
-            
+            // Never render another account's (or a signed-out browser's) cached records.
+            const owner = localStorage.getItem('cache_owner');
+            if (!Auth.user?.id || owner !== Auth.user.id) {
+                Auth.clearCaches();
+                return;
+            }
             const tenants = localStorage.getItem('tenants_cache');
             const properties = localStorage.getItem('properties_cache');
             const payments = localStorage.getItem('payments_cache');
@@ -480,25 +511,8 @@ const App = {
     },
     
     async forceRefreshData() {
-        this.showLoading();
-        try {
-            const [tenantsRes, propertiesRes, paymentsRes] = await Promise.all([
-                API.getTenants(),
-                API.getProperties(),
-                API.getPayments()
-            ]);
-            this.state.tenants = tenantsRes.data || [];
-            this.state.properties = propertiesRes.data || [];
-            this.state.payments = paymentsRes.data || [];
-            this.saveToLocalStorage();
-        } catch (error) {
-            console.error('Failed to refresh data:', error);
-            this.loadFromLocalStorage();
-            showNotification('Continue with Google to save your data permanently', 'info');
-        } finally {
-            this.hideLoading();
-            this.renderCurrentView();
-        }
+        await this.loadData();
+        this.renderCurrentView();
     },
     
     destroy() {

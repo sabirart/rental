@@ -149,7 +149,7 @@ const Settings = {
             this._clearHandler = () => {
                 Components.showConfirm(
                     'Clear All Data',
-                    'Are you sure you want to clear all data? This cannot be undone!',
+                    'Clear all properties, tenants and payments? Tenants and properties are moved to the Recycle Bin, and a recovery snapshot is saved first.',
                     'Clear All',
                     'Cancel',
                     'danger',
@@ -223,6 +223,19 @@ const Settings = {
                 if (status) status.textContent = '';
                 overlay.style.display = 'flex';
                 input.focus();
+                // Show exactly what will be affected before the user types the confirmation.
+                if (status && Auth.isAuthenticated && !isDemoMode()) {
+                    status.textContent = 'Checking what will be removed…';
+                    fetch(`${API.baseURL}/auth/account/delete-preview`, { credentials: 'include' })
+                        .then(r => r.json())
+                        .then(r => {
+                            if (!r.success) throw new Error(r.error || 'unavailable');
+                            const d = r.data;
+                            status.textContent = `This moves ${d.fileCount} Rental Manager file(s) in ${d.folders.length} Google Drive folder(s) to your Drive trash (recoverable for 30 days).` +
+                                (d.skippedCount ? ` ${d.skippedCount} other file(s) in those folders will NOT be touched.` : '');
+                        })
+                        .catch(() => { status.textContent = 'Could not load a preview. Deletion will only affect files created by Rental Manager.'; });
+                }
             });
         }
         const close = () => { overlay.style.display = 'none'; };
@@ -256,8 +269,6 @@ const Settings = {
                     const response = await fetch(`${API.baseURL}/auth/account/delete`, { method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ confirmText: input.value.trim() }) });
                     const result = await response.json().catch(() => ({}));
                     if (!response.ok || !result.success) throw new Error(result.error || result.message || 'Could not delete this account.');
-                    localStorage.removeItem('auth_user');
-                    ['tenants_cache','properties_cache','payments_cache','last_cache_update','ownerInfo','recycle_bin_cache'].forEach(key => localStorage.removeItem(key));
                     Auth.clear();
                     overlay.style.display = 'none';
                     window.location.href = `${window.location.pathname}?showHome=1`;
@@ -427,8 +438,16 @@ const Settings = {
                                 const file = picker.files?.[0]; picker.value = ''; if (!file) return;
                                 try {
                                     const incoming = JSON.parse(await file.text());
-                                    if (!window.confirm('Import this backup and replace the current records in this Google account? A recovery snapshot will be created first.')) return;
                                     button.disabled = true;
+                                    const check = await fetch(`${API.baseURL}/auth/backup/import?preview=1`, { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify(incoming) });
+                                    const checked = await check.json().catch(() => ({}));
+                                    if (!check.ok || !checked.success) {
+                                        const detail = Array.isArray(checked.details) && checked.details.length ? ` (${checked.details.slice(0, 3).join('; ')})` : '';
+                                        throw new Error((checked.error || 'This backup is not valid.') + detail);
+                                    }
+                                    const c = checked.data.counts;
+                                    const extra = checked.data.warnings?.length ? `\n\nNotes:\n- ${checked.data.warnings.join('\n- ')}` : '';
+                                    if (!window.confirm(`Import ${c.properties} propert${c.properties === 1 ? 'y' : 'ies'}, ${c.tenants} tenant(s) and ${c.payments} payment(s)? This replaces the current records in this Google account. A recovery snapshot is created first.${extra}`)) return;
                                     const response = await fetch(`${API.baseURL}/auth/backup/import`, { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify(incoming) });
                                     const payload = await response.json();
                                     if (!response.ok || !payload.success) throw new Error(payload.error || payload.message || 'Backup import failed');
@@ -478,7 +497,24 @@ const Settings = {
         showNotification('Owner information saved successfully', 'success');
     },
 
-    exportData() {
+    async exportData() {
+        if (isDemoMode()) return this._exportLocalData();
+        try {
+            const response = await fetch(`${API.baseURL}/auth/backup/export`, { credentials: 'include' });
+            if (!response.ok) { const err = await response.json().catch(() => ({})); throw new Error(err.error || 'Could not export data'); }
+            const backup = await response.json();
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rental_data_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showNotification('Data exported successfully', 'success');
+        } catch (error) { showNotification(error.message || 'Could not export data', 'error'); }
+    },
+
+    _exportLocalData() {
         const preferenceKeys = ['ownerInfo', 'darkMode', 'language', 'selectedLanguage', 'monthlyResetDay', 'notificationsEnabled', 'lastResetMonth', 'lastResetYear'];
         const preferences = {};
         preferenceKeys.forEach(key => {
@@ -490,7 +526,7 @@ const Settings = {
             tenants: App.state.tenants,
             properties: App.state.properties,
             payments: App.state.payments,
-            recycleBin: JSON.parse(localStorage.getItem('recycle_bin_cache') || '[]'),
+            recycleBin: [],
             owner: JSON.parse(localStorage.getItem('ownerInfo') || '{}'),
             preferences,
             exportedAt: new Date().toISOString(),
@@ -527,14 +563,10 @@ const Settings = {
         Components.showLoading('Clearing all data...');
         
         try {
-            await API.deleteAllTenants();
-            await API.deleteAllProperties();
-            await API.deleteAllPayments();
-            
-            localStorage.removeItem('tenants_cache');
-            localStorage.removeItem('properties_cache');
-            localStorage.removeItem('payments_cache');
-            localStorage.removeItem('last_cache_update');
+            // One atomic request: the server snapshots first and either clears everything or nothing.
+            await API.clearAllData();
+            Auth.clearCaches();
+            try { const u = Auth.user; if (u) localStorage.setItem('ownerInfo', JSON.stringify({ name: u.name || '', email: u.email || '' })); } catch (_) {}
             
             App.state.tenants = [];
             App.state.properties = [];

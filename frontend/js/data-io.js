@@ -286,7 +286,7 @@ const DataIO = {
                     .footer { text-align: center; font-size: 8px; color: #777; margin-top: 10px; }
                 </style>
             </head>
-            <body onload="window.print()">
+            <body>
                 <div class="center">
                     <p class="brand">${escapeHTML(owner.name || 'Rental Manager')}</p>
                     <p class="title">Payment Receipt · ${monthName(payment.month)} ${payment.year}</p>
@@ -308,6 +308,10 @@ const DataIO = {
             </body>
             </html>
         `);
+        win.document.close();
+        win.focus();
+        // Printing is triggered from this (script-controlled) window, not from an inline onload handler (CSP).
+        setTimeout(() => { try { win.print(); } catch (_) { /* user closed the window */ } }, 300);
         win.document.close();
     },
 

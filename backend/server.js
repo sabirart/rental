@@ -1,15 +1,14 @@
-// server.js
-
+'use strict';
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { errorHandler } = require('./middleware/errorHandler');
-const database = require('./config/database');
+const { csrfGuard } = require('./middleware/csrf');
 
-// Import routes
 const tenantRoutes = require('./routes/tenants');
 const propertyRoutes = require('./routes/properties');
 const paymentRoutes = require('./routes/payments');
@@ -19,243 +18,128 @@ const settingsRoutes = require('./routes/settings');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const isProd = process.env.NODE_ENV === 'production';
 
-// Render/any reverse proxy sits in front of this app - trust it for correct
-// client IPs (used by the rate limiter below) and secure-cookie detection.
-app.set('trust proxy', 1);
+// The hosting platform's reverse proxy sits in front of the app: trust exactly
+// that many hops so req.ip (rate limiting) and secure-cookie detection are right.
+// Set TRUST_PROXY=0 when running without a proxy.
+const trustProxy = process.env.TRUST_PROXY === undefined ? 1 : Number(process.env.TRUST_PROXY);
+app.set('trust proxy', Number.isNaN(trustProxy) ? 1 : trustProxy);
+app.disable('x-powered-by');
 
-// Standard security headers (HSTS, no-sniff, frame options, etc), plus a
-// Content-Security-Policy scoped to exactly what this app loads: Font
-// Awesome from cdnjs (frontend/index.html) and the Google Identity
-// Services script + its popup/iframe (frontend/js/web_script.js, used for
-// Google Sign-In). This replaces an earlier blanket
-// `contentSecurityPolicy: false` - disabling CSP entirely was a bigger
-// attack surface than necessary given the actual (small, known) set of
-// third-party origins in use; if a new script/style host is ever added to
-// the frontend, it must be added here too or the browser will block it.
-//  - crossOriginResourcePolicy/crossOriginOpenerPolicy are still turned
-//    off: their defaults ('same-origin') can silently block API responses
-//    from being read by a frontend on a different origin, and can break
-//    the Google Sign-In popup's ability to message back to this page - the
-//    same class of problem the CORS revert above fixes, just via a
-//    different header.
+/*
+ * Content-Security-Policy. All scripts are first-party files (no inline
+ * handlers or inline <script>), so script execution is limited to 'self'.
+ * Font Awesome is self-hosted under /vendor. Inline styles are still allowed
+ * (style attributes and small <style> blocks); that is a much smaller risk than
+ * inline script execution.
+ */
 app.use(helmet({
-    contentSecurityPolicy: {
-        useDefaults: true,
-        directives: {
-            defaultSrc: ["'self'"],
-            // 'unsafe-inline' is required here: the existing frontend
-            // relies extensively on inline onclick/onchange attributes in
-            // dynamically-generated HTML (Payments, Tenants, Properties,
-            // Recycle, etc.) - blocking inline script execution outright
-            // would break essentially every button in the app, which is a
-            // far worse regression than the CSP gap it would close, and
-            // rewriting all of it to addEventListener wiring is a large,
-            // risky change out of scope here. What this CSP still buys:
-            // scripts and outbound requests can only be *sourced* from
-            // 'self' and accounts.google.com - an injected
-            // <script src="https://evil.example/x.js"> or a fetch() to an
-            // attacker's domain (e.g. to exfiltrate the auth token) is
-            // blocked, even though inline script execution itself is not.
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com/gsi/client"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
-            fontSrc: ["'self'", "https://cdnjs.cloudflare.com"],
-            imgSrc: ["'self'", "data:", "blob:"],
-            connectSrc: ["'self'", "https://accounts.google.com", "https://www.googleapis.com"],
-            frameSrc: ["https://accounts.google.com"],
-            objectSrc: ["'none'"],
-            baseUri: ["'self'"]
-        }
-    },
-    crossOriginResourcePolicy: false,
-    crossOriginOpenerPolicy: false
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      scriptSrcAttr: ["'none'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      fontSrc: ["'self'", 'data:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://*.googleusercontent.com'],
+      connectSrc: ["'self'"],
+      frameSrc: ["'self'", 'blob:', 'data:'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'", 'https://accounts.google.com'],
+      frameAncestors: ["'self'"]
+    }
+  },
+  crossOriginResourcePolicy: false,
+  crossOriginOpenerPolicy: false
 }));
 
-// ===== CORS =====
-// Reverted to fully open CORS (matches the original app's behavior) after
-// an origin allow-list here broke real login/API calls whenever the
-// frontend and backend weren't on the exact same origin (e.g. frontend
-// opened from a different host/port than the backend, or a preview URL
-// that wasn't in ALLOWED_ORIGINS) - every request was silently blocked by
-// the browser with no clear error. This app authenticates with a Bearer
-// token in the Authorization header, not cookies, so there's no CSRF/
-// credentialed-cookie risk from opening this back up.
-const configuredOrigins = [
-    process.env.CORS_ORIGINS,
-    process.env.CORS_ORIGIN,
-    process.env.ALLOWED_ORIGINS
-].filter(Boolean).flatMap(value => value.split(','))
-    .map(value => value.trim())
-    .filter(Boolean);
-if (process.env.NODE_ENV !== 'production') {
-    ['http://localhost:5000','http://localhost:5001','http://127.0.0.1:5000','http://127.0.0.1:5001'].forEach(origin => {
-        if (!configuredOrigins.includes(origin)) configuredOrigins.push(origin);
-    });
+// ===== CORS (explicit allow-list; same-origin needs no entry) =====
+const configuredOrigins = [process.env.CORS_ORIGINS, process.env.CORS_ORIGIN, process.env.ALLOWED_ORIGINS]
+  .filter(Boolean).flatMap((v) => v.split(',')).map((v) => v.trim()).filter(Boolean);
+if (!isProd) {
+  ['http://localhost:5000', 'http://localhost:5001', 'http://127.0.0.1:5000', 'http://127.0.0.1:5001']
+    .forEach((o) => { if (!configuredOrigins.includes(o)) configuredOrigins.push(o); });
 }
-
 const corsOptions = {
-    origin(origin, callback) {
-        // Same-origin requests and non-browser clients have no Origin header.
-        if (!origin) return callback(null, true);
-        if (configuredOrigins.includes(origin)) return callback(null, true);
-        return callback(new Error('CORS origin not allowed'));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
-    optionsSuccessStatus: 200
+  origin(origin, callback) {
+    if (!origin || configuredOrigins.includes(origin)) return callback(null, true); // no Origin = same-origin / non-browser
+    return callback(new Error('CORS origin not allowed'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+  optionsSuccessStatus: 200
 };
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.use('/api', cors(corsOptions));
 
-// Rate-limit the Google OAuth start/callback flow and related account endpoints.
-const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { success: false, error: 'Too many attempts. Please try again later.' }
-});
-app.use('/api/auth', authLimiter);
+app.use(compression());
 
-const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 600,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { success: false, error: 'Too many requests. Please slow down.' }
-});
-app.use('/api', apiLimiter);
+const limiter = (max, message) => rateLimit({ windowMs: 15 * 60 * 1000, max, standardHeaders: true, legacyHeaders: false, message: { success: false, error: message } });
+app.use('/api/auth', limiter(Number(process.env.AUTH_RATE_LIMIT) || 200, 'Too many attempts. Please try again later.'));
+app.use('/api', limiter(Number(process.env.API_RATE_LIMIT) || 600, 'Too many requests. Please slow down.'));
 
-// Middleware. Tenant/property records can include a small base64 profile
-// picture or CNIC image, but 50mb per request was far more than any of that
-// needs and made this endpoint an easy target for a memory-exhaustion DoS.
-// Body size limit: a tenant's profile picture + documents are sent as
-// base64 in one JSON payload. The frontend enforces a combined 20MB raw
-// (pre-base64) budget per submission (see MAX_TOTAL_UPLOAD_MB in
-// frontend/js/utils.js) - base64 inflates that by ~1.33x (~27MB), plus
-// headroom for the rest of the form's JSON fields, hence 28mb here. This
-// was deliberately kept modest rather than raised arbitrarily: everything
-// is stored as text in Postgres (no object storage/CDN in this project),
-// so the body limit is effectively also a per-tenant database storage cap.
-// If either number changes, update the other to match, or legitimate
-// uploads that pass the frontend check will still be rejected here with a
-// generic "request entity too large" error.
-app.use(express.json({ limit: '28mb' }));
-app.use(express.urlencoded({ extended: true, limit: '28mb' }));
+// Body limit: a tenant's photo + documents travel as base64 in one JSON body. The
+// frontend caps the raw budget at 20 MB (MAX_TOTAL_UPLOAD_MB in utils.js); base64
+// inflates that ~1.33x (~27 MB) plus form fields, hence 28 MB. Keep both in sync.
+app.use('/api', express.json({ limit: process.env.BODY_LIMIT || '28mb' }));
+app.use('/api', csrfGuard(configuredOrigins));
 
-// (No /uploads static route: every image/document in this app - profile
-// pictures, CNIC scans, lease documents - is stored as base64 directly in
-// Postgres, not written to disk. A prior /uploads static route served a
-// folder nothing ever wrote to, which was both dead code and misleading -
-// removed rather than kept "just in case".)
-
-// ===== SERVE FRONTEND FILES =====
+// ===== Frontend =====
 const frontendPath = path.join(__dirname, '..', 'frontend');
-console.log('Serving frontend from:', frontendPath);
+const indexFile = path.join(frontendPath, 'index.html');
+const noCache = (res) => res.setHeader('Cache-Control', 'no-cache');
+app.get(['/', '/dashboard.html'], (req, res) => { noCache(res); res.sendFile(indexFile); });
+app.use(express.static(frontendPath, {
+  etag: true,
+  setHeaders(res, file) {
+    if (/\.(html|js|css)$/i.test(file)) noCache(res); // revalidate with ETag: instant 304 when unchanged
+    else res.setHeader('Cache-Control', 'public, max-age=604800'); // images, icons, fonts
+  }
+}));
 
-// index.html is the single-page app (marketing site + dashboard in one
-// document, see site-controller.js). dashboard.html only ever existed to
-// client-side-redirect back to index.html, so serve index.html directly
-// here instead of round-tripping through that extra redirect. These are
-// registered BEFORE express.static below so they take precedence over the
-// literal dashboard.html file still sitting in /frontend (static-serving
-// order otherwise means that file would win and this route would never run).
-app.get('/', (req, res) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
-});
-
-app.get('/dashboard.html', (req, res) => {
-    res.sendFile(path.join(frontendPath, 'index.html'));
-});
-
-// Serve frontend folder for static files (CSS, JS, HTML)
-app.use(express.static(frontendPath));
-
-// ===== API Routes =====
+// ===== API =====
 app.use('/api/auth', authRoutes);
 app.use('/api/tenants', tenantRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/recycle', recycleRoutes);
 app.use('/api/settings', settingsRoutes);
-// Health check
+
 app.get('/api/health', (req, res) => {
-    res.json({
-        status: 'OK',
-        message: 'Rental Management API is running',
-        timestamp: new Date().toISOString(),
-        version: process.env.npm_package_version || '1.0.0'
-    });
+  res.json({ status: 'OK', message: 'Rental Management API is running', timestamp: new Date().toISOString(), version: process.env.npm_package_version || '1.0.0' });
+});
+// Readiness: configuration needed for sign-in is present (no external calls).
+app.get('/api/ready', (req, res) => {
+  const missing = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET'].filter((k) => !process.env[k]);
+  res.status(missing.length ? 503 : 200).json({ status: missing.length ? 'NOT_READY' : 'READY', missing });
 });
 
-// 404 handler - Only for API routes, not for frontend
-app.use('/api/*', (req, res) => {
-    res.status(404).json({
-        success: false,
-        error: `Route not found: ${req.method} ${req.originalUrl}`
-    });
-});
-
-// Error handling middleware
+app.use('/api/*', (req, res) => res.status(404).json({ success: false, error: `Route not found: ${req.method} ${req.originalUrl}` }));
 app.use(errorHandler);
 
-// Start server only after the database schema is confirmed ready.
 let server;
-async function startServer() {
-    try {
-        await database.ready;
-    } catch (error) {
-        console.error('Server startup aborted: database initialization failed.');
-        process.exitCode = 1;
-        return;
-    }
-    server = app.listen(PORT, () => {
-        console.log('='.repeat(50));
-        console.log('Rental Management API Server');
-        console.log('='.repeat(50));
-        console.log(`Server running on port ${PORT}`);
-        console.log(`Health check: http://localhost:${PORT}/api/health`);
-        console.log(`Frontend: http://localhost:${PORT}/`);
-        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log('='.repeat(50));
-    });
+function start() {
+  if (isProd) {
+    const missing = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'].filter((k) => !process.env[k]);
+    if (missing.length) console.warn(`WARNING: missing environment variables: ${missing.join(', ')}. Google sign-in will not work until they are set.`);
+  }
+  server = app.listen(PORT, () => {
+    console.log(`Rental Manager listening on port ${PORT} (${process.env.NODE_ENV || 'development'})`);
+  });
+  const shutdown = (signal) => () => {
+    console.log(`${signal} received: closing HTTP server`);
+    if (!server) return process.exit(0);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 10000).unref();
+  };
+  process.on('SIGTERM', shutdown('SIGTERM'));
+  process.on('SIGINT', shutdown('SIGINT'));
+  process.on('unhandledRejection', (err) => { console.error('UNHANDLED REJECTION:', err); });
+  process.on('uncaughtException', (err) => { console.error('UNCAUGHT EXCEPTION:', err); if (!server) process.exit(1); server.close(() => process.exit(1)); });
 }
-startServer();
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing HTTP server');
-    if (!server) return process.exit(0);
-    server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-    });
-});
-
-process.on('SIGINT', () => {
-    console.log('SIGINT signal received: closing HTTP server');
-    if (!server) return process.exit(0);
-    server.close(() => {
-        console.log('HTTP server closed');
-        process.exit(0);
-    });
-});
-
-process.on('unhandledRejection', (err) => {
-    console.error('UNHANDLED REJECTION:', err);
-    if (!server) return process.exit(1);
-    server.close(() => {
-        process.exit(1);
-    });
-});
-
-process.on('uncaughtException', (err) => {
-    console.error('UNCAUGHT EXCEPTION:', err);
-    if (!server) return process.exit(1);
-    server.close(() => {
-        process.exit(1);
-    });
-});
+if (require.main === module) start();
 
 module.exports = app;

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const propertyController = require('../controllers/propertyController');
-const { validateProperty, validate } = require('../middleware/validation');
+const { validateProperty, validateRoom, validateRoomUpdate, validate } = require('../middleware/validation');
 const authMiddleware = require('../middleware/auth');
 
 // All property routes require a logged-in user
@@ -14,8 +14,8 @@ router.get('/:id/rooms', propertyController.getRooms);
 router.post('/', validateProperty, validate, propertyController.create);
 router.put('/:id', validateProperty, validate, propertyController.update);
 router.delete('/:id', propertyController.delete);
-router.put('/:id/rooms/:roomNumber', propertyController.updateRoom);
-router.post('/:id/rooms', propertyController.addRoom);
+router.put('/:id/rooms/:roomNumber', validateRoomUpdate, validate, propertyController.updateRoom);
+router.post('/:id/rooms', validateRoom, validate, propertyController.addRoom);
 router.delete('/:id/rooms/:roomNumber', propertyController.removeRoom);
 
 module.exports = router;

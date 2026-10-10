@@ -48,7 +48,7 @@ const Dashboard = {
         const currentMonth = getCurrentMonth();
         const currentYear = getCurrentYear();
         const paidCount = payments.filter(p => p.month === currentMonth && p.year === currentYear && p.status === 'paid').length;
-        const unpaidCount = payments.filter(p => p.month === currentMonth && p.year === currentYear && p.status !== 'paid').length;
+        const unpaidCount = payments.filter(p => p.month === currentMonth && p.year === currentYear && p.status !== 'paid' && p.status !== 'unbilled').length;
         const totalPayments = paidCount + unpaidCount;
         
         const tenantPercent = totalTenants > 0 ? Math.round((activeTenants / totalTenants) * 100) : 0;
@@ -121,7 +121,7 @@ const Dashboard = {
             const tenant = tenants.find(t => t.id === payment.tenant_id);
             const tenantName = tenant ? escapeHTML(tenant.name) : 'Unknown';
             const amount = payment.total_payment || payment.total || 0;
-            const statusClass = payment.status === 'paid' ? 'success' : payment.status === 'partial' ? 'warning' : 'danger';
+            const statusClass = payment.status === 'paid' ? 'success' : payment.status === 'partial' ? 'warning' : payment.status === 'unbilled' ? 'info' : 'danger';
             
             html += `
                 <button type="button" class="recent-payment-item" data-payment-id="${escapeHTML(payment.id)}" aria-label="Open payment details">

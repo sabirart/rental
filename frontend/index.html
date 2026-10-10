@@ -11,12 +11,9 @@
         html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     </style>
     <title>Rental Manager · Free Property Management</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
-    <link rel="stylesheet" href="css/style.css?v=v21" />
-    <link rel="stylesheet" href="css/web_style.css?v=v21" />
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">    
+    <link rel="stylesheet" href="vendor/fontawesome/all.min.css" />
+    <link rel="stylesheet" href="css/style.css?v=v22" />
+    <link rel="stylesheet" href="css/web_style.css?v=v22" />    
     <style>
         .auth-status {
             display: flex;
@@ -187,6 +184,7 @@
 
 </head>
 <body>
+    <a class="skip-link" href="#mainContent">Skip to main content</a>
     <!-- ============================================================
          DASHBOARD ROOT
          The application dashboard is hidden until Google sign-in succeeds.
@@ -270,7 +268,7 @@
         <div class="notif-panel-overlay" id="notifPanelOverlay" style="display: none;"></div>
 
     <!-- Main Content -->
-    <main class="main-content" id="mainContent" role="main">
+    <main class="main-content" id="mainContent" role="main" tabindex="-1">
         
         <!-- Auth Status Bar - Desktop only -->
         <div class="auth-bar" id="authBar">
@@ -296,7 +294,7 @@
                     <h2>Dashboard</h2>
                     <p class="view-description">Overview of your rental business</p>
                 </div>
-                <button class="btn btn-sm btn-outline" onclick="App.refreshData()">Refresh</button>
+                <button type="button" class="btn btn-sm btn-outline" data-rm-action="app-refresh">Refresh</button>
             </div>
             
             <!-- Dashboard Stats -->
@@ -326,7 +324,7 @@
             <div class="dashboard-section">
                 <div class="section-header">
                     <h3>Recent Payments</h3>
-                    <a href="#payments" class="btn btn-sm btn-outline" onclick="App.navigateTo('payments')">View All</a>
+                    <a href="#payments" class="btn btn-sm btn-outline" data-rm-action="goto-payments">View All</a>
                 </div>
                 <div class="recent-payments-list" id="recentPayments">
                     <div class="empty-state">No recent payments</div>
@@ -639,8 +637,8 @@
                         <p>Choose a month and year to export just that period's payments.</p>
                     </div>
                     <div style="display:flex; gap:6px; align-items:center;">
-                        <select class="form-control" id="exportMonthSelect" style="width:auto;"></select>
-                        <select class="form-control" id="exportYearSelect" style="width:auto;"></select>
+                        <select class="form-control" id="exportMonthSelect" aria-label="Statement month" style="width:auto;"></select>
+                        <select class="form-control" id="exportYearSelect" aria-label="Statement year" style="width:auto;"></select>
                         <button class="btn btn-sm btn-outline">Export</button>
                     </div>
                 </div>
@@ -650,7 +648,7 @@
                         <p>Generate a printable receipt for one tenant's payment.</p>
                     </div>
                     <div style="display:flex; gap:6px; align-items:center;">
-                        <select class="form-control" id="receiptPaymentSelect" style="width:auto;"></select>
+                        <select class="form-control" id="receiptPaymentSelect" aria-label="Payment for receipt" style="width:auto;"></select>
                         <button class="btn btn-sm btn-outline">Generate</button>
                     </div>
                 </div>
@@ -660,11 +658,11 @@
                         <p>A spreadsheet-friendly export of payments over a date range - useful for bookkeeping.</p>
                         <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px;">
                             <span style="font-size:0.8rem; color:var(--text-light);">From</span>
-                            <select class="form-control" id="exportCsvFromMonth" style="width:auto;"></select>
-                            <select class="form-control" id="exportCsvFromYear" style="width:auto;"></select>
+                            <select class="form-control" id="exportCsvFromMonth" aria-label="Export from month" style="width:auto;"></select>
+                            <select class="form-control" id="exportCsvFromYear" aria-label="Export from year" style="width:auto;"></select>
                             <span style="font-size:0.8rem; color:var(--text-light);">To</span>
-                            <select class="form-control" id="exportCsvToMonth" style="width:auto;"></select>
-                            <select class="form-control" id="exportCsvToYear" style="width:auto;"></select>
+                            <select class="form-control" id="exportCsvToMonth" aria-label="Export to month" style="width:auto;"></select>
+                            <select class="form-control" id="exportCsvToYear" aria-label="Export to year" style="width:auto;"></select>
                         </div>
                     </div>
                     <button class="btn btn-sm btn-outline">Export</button>
@@ -683,7 +681,7 @@
                         <p id="importFileName">No file selected</p>
                     </div>
                     <div style="display:flex; gap:6px;">
-                        <input type="file" id="importFileInput" accept=".json,application/json" style="display:none;">
+                        <input type="file" id="importFileInput" aria-label="Choose backup file to import" accept=".json,application/json" style="display:none;">
                         <button class="btn btn-sm btn-outline" id="importChooseBtn">Choose File</button>
                         <button class="btn btn-sm btn-primary" id="importConfirmBtn" disabled>Import</button>
                     </div>
@@ -710,7 +708,7 @@
         <div class="modal-content modal-large">
             <div class="modal-header">
                 <h3 id="documentModalTitle">Documents</h3>
-                <button class="modal-close" onclick="App.closeDocumentModal()" aria-label="Close documents">&times;</button>
+                <button type="button" class="modal-close" data-rm-action="close-documents" aria-label="Close documents">&times;</button>
             </div>
             <div class="modal-body" id="documentModalBody">
                 <!-- Documents will be displayed here -->
@@ -743,24 +741,7 @@
                     <a href="#" class="btn btn-outline" id="heroMyDashboard" style="display:none">Open Dashboard</a>
                 </div>
             </div>
-            <script>
-            (function () {
-                try {
-                    var hasUser = !!localStorage.getItem('auth_user');
-                    document.body.classList.toggle('returning-user', hasUser);
-                    var google = document.getElementById('googleStartBtn');
-                    var dash = document.getElementById('myDashboardTrigger');
-                    var heroDash = document.getElementById('heroMyDashboard');
-                    if (hasUser) {
-                        if (google) google.style.display = 'none';
-                        if (dash) dash.style.display = 'none';
-                        var demo = document.getElementById('heroTryDemo');
-                        if (demo) demo.style.display = 'none';
-                        if (heroDash) heroDash.style.display = 'inline-flex';
-                    }
-                } catch (_) {}
-            })();
-            </script>
+            <script src="js/early-init.js?v=v22"></script>
             <div class="hero-img" id="heroIcons">
                 <div class="dashboard-mock" id="dashboardMock">
                     <div class="dash-sidebar">
@@ -811,7 +792,7 @@
       <div class="auth-modal-box owner-profile-box">
         <div class="owner-profile-photo-wrap">
           <button type="button" class="owner-profile-photo-button" id="ownerProfilePhotoButton" aria-label="Choose profile photo"><img id="ownerProfilePhotoPreview" alt="Profile photo preview" src="" style="display:none"><span id="ownerProfilePhotoFallback">RM</span><span class="owner-profile-photo-edit" aria-hidden="true">Edit</span></button>
-          <input id="ownerProfilePhotoInput" type="file" accept="image/*" hidden>
+          <input id="ownerProfilePhotoInput" aria-label="Choose profile photo" type="file" accept="image/*" hidden>
         </div>
         <h2 id="ownerProfileTitle">Set up your owner profile</h2>
         <p class="sub">Just confirm your name. Your Google email is already verified.</p>
@@ -863,26 +844,28 @@
     </style>
     <!-- Scripts -->
     <!-- Application scripts -->
-    <script src="js/api.js?v=v21"></script>
-    <script src="js/auth.js?v=v21"></script>
-    <script src="js/app.js?v=v21"></script>
-    <script src="js/dashboard.js?v=v21"></script>
-    <script src="js/tenants.js?v=v21"></script>
-    <script src="js/properties.js?v=v21"></script>
-    <script src="js/payments.js?v=v21"></script>
-    <script src="js/settings.js?v=v21"></script>
-    <script src="js/notifications.js?v=v21"></script>
-    <script src="js/data-io.js?v=v21"></script>
-    <script src="js/utils.js?v=v21"></script>
-    <script src="js/components.js?v=v21"></script>
-    <script src="js/recycle.js?v=v21"></script>
-    <script src="js/mobile.js?v=v21"></script>
-    <script src="js/sample-data.js?v=v21"></script>
-    <script src="js/auth-ui.js?v=v21"></script>
-    <script src="js/web_script.js?v=v21"></script>
-    <script src="js/animation.js?v=v21"></script>
-    <script src="js/site-controller.js?v=v21"></script>
-    <script src="js/overlay-back-guard.js?v=v21"></script>
-    <script src="js/interaction-guard.js?v=v21"></script>
+    <script src="js/api.js?v=v22"></script>
+    <script src="js/auth.js?v=v22"></script>
+    <script src="js/app.js?v=v22"></script>
+    <script src="js/dashboard.js?v=v22"></script>
+    <script src="js/tenants.js?v=v22"></script>
+    <script src="js/properties.js?v=v22"></script>
+    <script src="js/payments.js?v=v22"></script>
+    <script src="js/settings.js?v=v22"></script>
+    <script src="js/notifications.js?v=v22"></script>
+    <script src="js/data-io.js?v=v22"></script>
+    <script src="js/utils.js?v=v22"></script>
+    <script src="js/actions.js?v=v22"></script>
+    <script src="js/a11y.js?v=v22"></script>
+    <script src="js/components.js?v=v22"></script>
+    <script src="js/recycle.js?v=v22"></script>
+    <script src="js/mobile.js?v=v22"></script>
+    <script src="js/sample-data.js?v=v22"></script>
+    <script src="js/auth-ui.js?v=v22"></script>
+    <script src="js/web_script.js?v=v22"></script>
+    <script src="js/animation.js?v=v22"></script>
+    <script src="js/site-controller.js?v=v22"></script>
+    <script src="js/overlay-back-guard.js?v=v22"></script>
+    <script src="js/interaction-guard.js?v=v22"></script>
 </body>
 </html>

@@ -28,7 +28,7 @@ const Tenants = {
         } else if (latestPayment.status === 'unpaid') {
             return '<span class="badge badge-danger">Unpaid</span>';
         }
-        return '<span class="badge badge-info">' + escapeHTML(latestPayment.status) + '</span>';
+        return '<span class="badge badge-info">' + escapeHTML(latestPayment.status === 'unbilled' ? 'Unbilled' : latestPayment.status) + '</span>';
     },
 
     async renderTable() {
@@ -97,7 +97,9 @@ const Tenants = {
                     <td style="${componentUnpaidStyle(duesPaid, previousDues)}">${formatCurrency(previousDues)}</td>
                     <td>
                         ${latestPayment 
-                            ? (latestPayment.status === 'unpaid' 
+                            ? (latestPayment.status === 'unbilled'
+                                ? `<span class="badge badge-info">Unbilled</span>`
+                                : latestPayment.status === 'unpaid' 
                                 ? `<span class="badge badge-danger">Unpaid</span> <strong>${formatCurrency(totalWithoutDues)}</strong>`
                                 : latestPayment.status === 'partial'
                                     ? `<span class="badge badge-warning">Partial</span> <strong style="color: #ff8c00;">${formatCurrency(totalWithoutDues)}</strong>`
@@ -107,7 +109,7 @@ const Tenants = {
                     </td>
                     <td>
                         <div class="action-dropdown">
-                            <button class="action-dropdown-btn" data-id="${escapeHTML(tenant.id)}" aria-label="More actions" onclick="event.stopPropagation();">
+                            <button class="action-dropdown-btn" data-id="${escapeHTML(tenant.id)}" aria-label="More actions">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <circle cx="12" cy="5" r="1.5"/>
                                     <circle cx="12" cy="12" r="1.5"/>
@@ -310,7 +312,7 @@ const Tenants = {
                         <p style="color: var(--text-light); font-size: 0.875rem; margin: 2px 0 0 0;">${property ? escapeHTML(property.name) : 'No Property'} - Room ${tenant.room_number || 'N/A'}</p>
                     </div>
                     ${currentPayment ? `
-                        <button class="btn btn-sm btn-primary" onclick="Tenants.generateReceipt('${escapeHTML(tenant.id)}', ${defaultYear}, ${currentMonth})" style="display: inline-flex; align-items: center; gap: 6px;">
+                        <button class="btn btn-sm btn-primary" data-rm-action="tenant-receipt" data-tenant-id="${escapeHTML(tenant.id)}" data-year="${defaultYear}" data-month="${currentMonth}" style="display: inline-flex; align-items: center; gap: 6px;">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Receipt
                         </button>
@@ -442,7 +444,7 @@ const Tenants = {
                     .status { display:inline-block; margin-top:16px; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
                 </style>
             </head>
-            <body onload="window.print()">
+            <body>
                 <h1>${escapeHTML(owner.name || 'Rental Manager')}</h1>
                 <p class="sub">Payment Receipt · ${monthName(payment.month)} ${payment.year}</p>
                 <p class="sub">Tenant: ${escapeHTML(tenant ? tenant.name : 'N/A')}</p>
@@ -458,6 +460,10 @@ const Tenants = {
             </body>
             </html>
         `);
+        win.document.close();
+        win.focus();
+        // Printing is triggered from this (script-controlled) window, not from an inline onload handler (CSP).
+        setTimeout(() => { try { win.print(); } catch (_) { /* user closed the window */ } }, 300);
         win.document.close();
     },
 
@@ -643,21 +649,23 @@ const Tenants = {
         let html = '';
         sorted.forEach(payment => {
             const total = (payment.monthly_rent || 0) + (payment.electricity || 0) + (payment.gas || 0) + (payment.previous_dues || 0);
-            const statusBadge = payment.status === 'paid' 
+            const statusBadge = payment.status === 'unbilled'
+                ? '<span class="badge badge-info">Unbilled</span>'
+                : payment.status === 'paid' 
                 ? '<span class="badge badge-success">Paid</span>'
                 : payment.status === 'partial' 
                     ? '<span class="badge badge-warning">Partial</span>'
                     : '<span class="badge badge-danger">Unpaid</span>';
             
             html += `
-                <div class="payment-history-item" onclick="Payments.editPayment('${escapeHTML(payment.id)}', '${escapeHTML(payment.tenant_id)}')" style="
+                <div class="payment-history-item" data-rm-action="edit-payment" data-payment-id="${escapeHTML(payment.id)}" data-tenant-id="${escapeHTML(payment.tenant_id)}" role="button" tabindex="0" style="
                     border: 1px solid var(--border-light);
                     border-radius: 8px;
                     padding: 12px 16px;
                     margin-bottom: 8px;
                     cursor: pointer;
                     transition: background 0.15s ease;
-                " onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">
+                ">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
                         <div style="display: flex; align-items: center; gap: 12px;">
                             <strong>${escapeHTML(getMonthName(payment.month))} ${payment.year}</strong>
@@ -874,7 +882,7 @@ const Tenants = {
         
         overlay.innerHTML = `
             <div class="tenant-details-box">
-                <button class="tenant-details-close" onclick="Tenants.closeDetails()">&times;</button>
+                <button type="button" class="tenant-details-close" data-rm-action="close-tenant-details" aria-label="Close tenant details">&times;</button>
                 
                 <div class="tenant-details-header">
                     <div class="tenant-details-header-left">
@@ -909,7 +917,7 @@ const Tenants = {
                         <span class="detail-label">Mobile Number</span>
                         <span class="detail-value">
                             ${tenant.mobile_number
-                                ? `<a href="javascript:void(0)" class="tenant-contact-link" onclick="Tenants.showContactOptions('${escapeHTML(tenant.id)}')">${escapeHTML(tenant.mobile_number)}</a>`
+                                ? `<a href="#" role="button" class="tenant-contact-link" data-rm-action="tenant-contact" data-tenant-id="${escapeHTML(tenant.id)}">${escapeHTML(tenant.mobile_number)}</a>`
                                 : '<span class="detail-empty">Not provided</span>'
                             }
                         </span>

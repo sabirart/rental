@@ -1,10 +1,16 @@
 // js/utils.js - Essential utilities only
 
+// Escapes text for BOTH element content and quoted attribute values (&, <, >, " and ').
+// The previous textContent/innerHTML trick left quotes untouched, which let a value such
+// as  x" onerror="...  break out of an attribute such as src="...".
 function escapeHTML(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    if (str === null || str === undefined || str === false) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function escapeURL(str) {
@@ -35,15 +41,31 @@ function formatDate(dateString) {
 }
 
 function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+// Billing period "now" belongs to. With the default reset day (31) this is the calendar
+// month; a smaller reset day moves the period to the next month once that day has passed
+// (same rule as the server's UserSettings.getEffectivePeriod).
+function getBillingPeriod(date = new Date()) {
+    let resetDay = 31;
+    try {
+        const fromState = window.App && App.state && App.state.settings && App.state.settings.monthlyResetDay;
+        resetDay = parseInt(fromState || localStorage.getItem('monthly_reset_day') || '31', 10) || 31;
+    } catch (_) { /* storage unavailable: calendar month */ }
+    const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    let month = date.getMonth() + 1;
+    let year = date.getFullYear();
+    if (date.getDate() > Math.min(resetDay, daysInMonth)) { month += 1; if (month > 12) { month = 1; year += 1; } }
+    return { month, year };
 }
 
 function getCurrentMonth() {
-    return new Date().getMonth() + 1;
+    return getBillingPeriod().month;
 }
 
 function getCurrentYear() {
-    return new Date().getFullYear();
+    return getBillingPeriod().year;
 }
 
 function getMonthName(month) {
