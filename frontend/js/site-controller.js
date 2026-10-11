@@ -65,42 +65,43 @@ const SiteController = {
       // OAuth has just redirected back after setting the session cookie. Retry a
       // few times for a cold-starting backend rather than immediately showing the
       // Google button again after a successful consent screen.
-      let networkError = null;
-      // A hosted backend can briefly return 503 while waking up or restarting.
-      // Retry transient failures for every visit, not just the OAuth callback.
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < (authCallback && params.get('google_auth') === 'success' ? 3 : 1); attempt++) {
         try {
           response = await fetch(`${API.baseURL}/auth/me`, { credentials: 'include', cache: 'no-store' });
-          networkError = null;
           payload = await response.json().catch(() => ({}));
           if (response.ok && payload.success) break;
-          if (response.status < 500 || attempt === 2) break;
-        } catch (error) {
-          networkError = error;
-          if (attempt === 2) break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        } catch (_) { /* retry only during the OAuth return flow */ }
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 900 * (attempt + 1)));
       }
       if (!response || !response.ok || !payload.success) {
         this.hideAuthLoading();
-        const quotaMessage = payload.code === 'GOOGLE_DRIVE_STORAGE_FULL' || /Drive storage quota|Google Drive storage is full/i.test(payload.error || '');
-        const callbackMessage = params.get('message');
         const status = response?.status || 0;
-        // A server/network failure does NOT prove that the user's session expired.
-        // Preserve any existing user/session state and explain the actual failure.
-        if (status >= 500 || status === 0 || networkError) {
-          this.showAuthError(status, payload, networkError);
-          if (authCallback) history.replaceState({}, document.title, location.pathname + location.hash);
-          return;
-        }
-        Auth.clear();
-        this.updateAuthUI(false);
+        const callbackMessage = params.get('message');
+        const callbackCode = params.get('code') || payload.code || '';
+        const quotaMessage = callbackCode === 'GOOGLE_DRIVE_STORAGE_FULL' || /Drive storage quota|Google Drive storage is full/i.test(payload.error || callbackMessage || '');
+        const lockUnavailable = callbackCode === 'WRITE_LOCK_UNAVAILABLE' || /shared data protection is temporarily unavailable/i.test(callbackMessage || payload.error || '');
+        const transientServerFailure = status === 503 || status >= 500 || !response;
+        // A transient API outage is not proof that the user is signed out. Keep
+        // any cached identity and explain the failure instead of silently resetting the UI.
+        if (!transientServerFailure) Auth.clear();
+        this.updateAuthUI(transientServerFailure ? !!Auth.isAuthenticated : false);
         if (authCallback && params.get('google_auth') === 'error') {
-          this.showAuthError(status, { ...payload, error: callbackMessage || payload.error || 'Google sign-in was not completed.' });
+          const title = lockUnavailable ? 'Rental Manager database unavailable' : quotaMessage ? 'Google Drive storage is full' : 'Google Sign-In';
+          const message = lockUnavailable
+            ? 'Google verified your account, but Rental Manager could not reach its shared database protection service. Your sign-in was not completed and no changes were saved. This is a server configuration/availability issue; please try again later or contact the site administrator.'
+            : callbackMessage || payload.error || 'Google sign-in could not be completed. Please try again.';
+          window.Components?.showError?.(title, message);
         } else if (quotaMessage) {
-          this.showAuthError(status, { ...payload, error: payload.error || 'Free up space in Google Drive, Gmail, or Google Photos, then try again.' });
-        } else if (authCallback && status !== 401) {
-          this.showAuthError(status, payload);
+          window.Components?.showError?.('Google Drive storage is full', payload.error || 'Free up space in Google Drive, Gmail, or Google Photos, then sign in again.');
+        } else if (transientServerFailure) {
+          const message = status === 503
+            ? (payload.error || 'The Rental Manager server is temporarily unavailable (HTTP 503). Your account has not been signed out; please retry in a few minutes.')
+            : status >= 500
+              ? (payload.error || `The Rental Manager server returned an error (HTTP ${status}). Please retry shortly.`)
+              : 'The Rental Manager server could not be reached. Check your internet connection and try again.';
+          window.Components?.showError?.('Unable to connect to Rental Manager', message);
+        } else if (authCallback) {
+          window.Components?.showError?.('Google Sign-In', payload.error || 'Your session could not be verified. Please sign in again.');
         }
         if (authCallback) history.replaceState({}, document.title, location.pathname + location.hash);
         return;
@@ -119,63 +120,9 @@ const SiteController = {
     } catch (error) {
       this.hideAuthLoading();
       this.updateAuthUI(!!Auth.isAuthenticated);
-      if (authCallback) {
-        window.Components?.showError?.('Google Sign-In', 'Could not finish connecting to Google. Please check your connection and try again.');
-        history.replaceState({}, document.title, location.pathname + location.hash);
-      }
+      window.Components?.showError?.('Connection problem', 'Rental Manager could not reach its server. Check your internet connection. If the problem continues, the server may be unavailable; no changes were saved.');
+      if (authCallback) history.replaceState({}, document.title, location.pathname + location.hash);
     }
-  },
-  showAuthError(status = 0, payload = {}, networkError = null) {
-    document.getElementById('authDiagnosticPanel')?.remove();
-    const raw = String(payload?.error || payload?.message || '').trim();
-    let heading = 'Could not check your account';
-    let explanation = 'The website could not confirm whether you are signed in.';
-    let nextStep = 'Try again. If the problem continues, contact the website administrator.';
-    if (status === 503) {
-      heading = 'Server temporarily unavailable (503)';
-      explanation = 'The Rental Manager server is not ready to respond. On Render, this can happen while the service is waking up, restarting, or experiencing an outage. This is a server-side problem, not a wrong Google password.';
-      nextStep = 'Wait 30–60 seconds and select Try again. If it keeps happening, check the Render service logs and deployment status.';
-    } else if (status === 502 || status === 504) {
-      heading = `Server connection problem (${status})`;
-      explanation = 'The hosting service did not receive a valid response from the Rental Manager backend. The backend may be starting, overloaded, or unavailable.';
-      nextStep = 'Wait briefly and try again. If repeated, check the hosting service and backend logs.';
-    } else if (status >= 500) {
-      heading = `Server error (${status})`;
-      explanation = 'The backend returned a server error while checking your login. The website cannot safely determine your account status until the server is healthy.';
-      nextStep = 'Try again later. If it repeats, the backend logs are needed to identify the server-side cause.';
-    } else if (!status || networkError) {
-      heading = 'Could not reach the server';
-      explanation = 'The request failed before the website received a response. Your internet connection, server availability, or browser network settings may be responsible.';
-      nextStep = 'Check your internet connection and try again. If other pages work but this persists, check the backend URL and hosting status.';
-    } else if (status === 401) {
-      heading = 'Google session not found';
-      explanation = 'The server did not find an active login session. This can happen if the login cookie was not saved or has expired.';
-      nextStep = 'Select Continue with Google again. If it loops, check OAuth callback and cookie settings on the server.';
-    } else if (status === 403) {
-      heading = 'Access was denied (403)';
-      explanation = 'The server received the request but refused access. This is usually caused by account permissions or server configuration.';
-      nextStep = 'Check the account permissions and server configuration, then try again.';
-    } else if (status === 404) {
-      heading = 'Login endpoint not found (404)';
-      explanation = 'The configured backend does not have the expected account-check endpoint. The frontend and backend deployment may be out of sync.';
-      nextStep = 'Deploy the matching backend version and verify the API base URL.';
-    }
-    const panel = document.createElement('section');
-    panel.id = 'authDiagnosticPanel';
-    panel.setAttribute('role', 'alert');
-    panel.setAttribute('aria-live', 'assertive');
-    panel.innerHTML = `<div class="auth-diagnostic-card"><div class="auth-diagnostic-mark" aria-hidden="true">!</div><h2 class="auth-diagnostic-title"></h2><p class="auth-diagnostic-explanation"></p><p class="auth-diagnostic-next"></p><details class="auth-diagnostic-details"><summary>Technical details</summary><code class="auth-diagnostic-code"></code></details><div class="auth-diagnostic-actions"><button type="button" class="auth-diagnostic-retry">Try again</button><button type="button" class="auth-diagnostic-close">Close</button></div></div>`;
-    const style = document.createElement('style');
-    style.textContent = '#authDiagnosticPanel{position:fixed;inset:0;z-index:1000001;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(18,24,34,.48);backdrop-filter:blur(3px);font-family:inherit;color:#202124}#authDiagnosticPanel .auth-diagnostic-card{width:min(100%,520px);max-height:90vh;overflow:auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:26px;box-shadow:0 20px 70px rgba(0,0,0,.2)}#authDiagnosticPanel .auth-diagnostic-mark{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#fff0e5;color:#a63d00;font-weight:800;font-size:21px}#authDiagnosticPanel h2{font-size:19px;margin:14px 0 10px}#authDiagnosticPanel p{font-size:14px;line-height:1.55;color:#4b5563;margin:8px 0}#authDiagnosticPanel .auth-diagnostic-next{padding:11px 12px;background:#f6f7f9;border-radius:8px}#authDiagnosticPanel details{margin-top:14px;font-size:12px;color:#6b7280}#authDiagnosticPanel summary{cursor:pointer}#authDiagnosticPanel code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:8px}#authDiagnosticPanel .auth-diagnostic-actions{display:flex;gap:10px;margin-top:20px}#authDiagnosticPanel button{border:1px solid #d1d5db;border-radius:8px;padding:10px 16px;cursor:pointer;font:inherit;font-size:14px}#authDiagnosticPanel .auth-diagnostic-retry{background:#1a73e8;color:#fff;border-color:#1a73e8}#authDiagnosticPanel .auth-diagnostic-close{background:#fff;color:#374151}';
-    document.getElementById('authDiagnosticStyles')?.remove();
-    style.id = 'authDiagnosticStyles'; document.head.appendChild(style);
-    panel.querySelector('.auth-diagnostic-title').textContent = heading;
-    panel.querySelector('.auth-diagnostic-explanation').textContent = explanation;
-    panel.querySelector('.auth-diagnostic-next').textContent = nextStep;
-    panel.querySelector('.auth-diagnostic-code').textContent = `Request: GET ${API.baseURL}/auth/me\nHTTP status: ${status || 'No response'}\nServer message: ${raw || 'No server error message returned'}${networkError ? `\nNetwork error: ${networkError.message || 'Request failed'}` : ''}`;
-    panel.querySelector('.auth-diagnostic-retry').addEventListener('click', () => { panel.remove(); this.restoreSession(); });
-    panel.querySelector('.auth-diagnostic-close').addEventListener('click', () => panel.remove());
-    document.body.appendChild(panel);
   },
   showAuthLoading(message = 'Connecting to Google…') {
     let overlay = document.getElementById('authLoadingOverlay');

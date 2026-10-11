@@ -64,9 +64,17 @@ async function isPersistentlyRevoked(session) {
       [hashSessionId(session.sid), String(session.sub), Date.now()]
     );
     return result.rowCount > 0;
-  } catch (_) {
+  } catch (error) {
+    // Keep the browser response safe, but record the real database failure so the
+    // operator can distinguish a sleeping database, bad credentials, TLS issues,
+    // missing permissions, and statement/schema errors in the hosting logs.
+    console.error('[SESSION_STORE_UNAVAILABLE] Persistent session revocation check failed:', {
+      code: error?.code || null,
+      message: error?.message || 'Unknown database error',
+      name: error?.name || 'Error'
+    });
     // Fail closed when the operator has explicitly configured a shared session store.
-    throw new AppError('Session verification is temporarily unavailable. Please retry shortly.', 503, 'SESSION_STORE_UNAVAILABLE');
+    throw new AppError('Session verification is temporarily unavailable because the shared session store could not be reached. Please retry shortly; if this continues, the site administrator must check the database connection and permissions.', 503, 'SESSION_STORE_UNAVAILABLE');
   }
 }
 function pruneRevoked() { const now = Date.now(); for (const [sid, exp] of revoked) if (exp < now) revoked.delete(sid); }

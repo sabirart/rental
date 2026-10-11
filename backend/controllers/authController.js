@@ -98,7 +98,11 @@ const authController = {
   },
 
   async googleCallback(req, res) {
-    const fail = (message) => res.redirect(`${frontendBaseUrl(req)}/?google_auth=error&message=${encodeURIComponent(message)}`);
+    const fail = (message, code = '') => {
+      const params = new URLSearchParams({ google_auth: 'error', message: String(message || 'Google sign-in could not be completed.') });
+      if (code) params.set('code', code);
+      return res.redirect(`${frontendBaseUrl(req)}/?${params.toString()}`);
+    };
     try {
       const cookies = parseCookies(req);
       if (!req.query.state || req.query.state !== cookies[STATE_COOKIE]) throw new AppError('Google sign-in session expired. Please try again.', 400);
@@ -136,7 +140,7 @@ const authController = {
       res.redirect(`${frontendBaseUrl(req)}/?google_auth=success`);
     } catch (e) {
       console.error('Google OAuth callback error:', e.message);
-      fail(friendlyGoogleError(e));
+      fail(friendlyGoogleError(e), e?.code || 'GOOGLE_SIGN_IN_FAILED');
     }
   },
 

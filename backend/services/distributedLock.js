@@ -45,7 +45,14 @@ async function withDistributedWriteLock(userId, task) {
     return await task();
   } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError('Shared data protection is temporarily unavailable. No changes were saved; please retry shortly.', 503, 'WRITE_LOCK_UNAVAILABLE');
+    // Keep the public error safe, but log the underlying DB failure so the
+    // Render logs reveal whether this is a connection, timeout, or SQL issue.
+    console.error('[WRITE_LOCK_UNAVAILABLE] Shared database lock failed:', {
+      code: error?.code || null,
+      message: error?.message || 'Unknown database error',
+      name: error?.name || 'Error'
+    });
+    throw new AppError('Rental Manager could not reach its shared database protection service. No changes were saved. Please retry shortly; if this continues, the site administrator must check the database connection and availability.', 503, 'WRITE_LOCK_UNAVAILABLE');
   } finally {
     if (client) {
       if (acquired) {
