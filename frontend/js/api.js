@@ -5,15 +5,23 @@ const API = {
         if (window.API_URL) {
             return window.API_URL;
         }
-        const storedURL = localStorage.getItem('api_url');
-        if (storedURL) {
-            return storedURL;
-        }
-        // Same-origin by default so this works both on localhost and once deployed
-        // (backend serves the frontend and the API from the same domain).
+        // Local development must use the local backend. A previously saved API URL
+        // can point at an older deployment and send OAuth/session checks to the
+        // wrong server, which makes Google login appear to loop back to sign-in.
         if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
             return 'http://localhost:5000/api';
         }
+        // On deployed same-origin installations, ignore stale URLs from an older
+        // host. An intentionally configured API_URL still takes precedence above.
+        const storedURL = localStorage.getItem('api_url');
+        if (storedURL) {
+            try {
+                const saved = new URL(storedURL, window.location.origin);
+                if (saved.origin === window.location.origin) return saved.toString().replace(/\/$/, '');
+                localStorage.removeItem('api_url');
+            } catch (_) { localStorage.removeItem('api_url'); }
+        }
+        // Backend serves the frontend and API from the same domain.
         return `${window.location.origin}/api`;
     },
 

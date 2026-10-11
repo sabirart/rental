@@ -36,6 +36,7 @@ const SiteController = {
         document.getElementById('ownerProfileModal').classList.remove('active');
         document.body.style.overflow = '';
         this.updateAuthUI(true);
+        this.unlockDashboard();
       } catch (err) { error.textContent = err.message || 'Could not save your profile. Please try again.'; error.style.display = 'block'; }
       finally { btn.disabled = false; btn.textContent = Auth.user?.profileComplete ? 'Save changes' : 'Next'; }
     });
@@ -59,9 +60,20 @@ const SiteController = {
       return;
     }
     try {
-      const response = await fetch(`${API.baseURL}/auth/me`, { credentials: 'include' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.success) {
+      let response;
+      let payload = {};
+      // OAuth has just redirected back after setting the session cookie. Retry a
+      // few times for a cold-starting backend rather than immediately showing the
+      // Google button again after a successful consent screen.
+      for (let attempt = 0; attempt < (authCallback && params.get('google_auth') === 'success' ? 3 : 1); attempt++) {
+        try {
+          response = await fetch(`${API.baseURL}/auth/me`, { credentials: 'include', cache: 'no-store' });
+          payload = await response.json().catch(() => ({}));
+          if (response.ok && payload.success) break;
+        } catch (_) { /* retry only during the OAuth return flow */ }
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 900 * (attempt + 1)));
+      }
+      if (!response || !response.ok || !payload.success) {
         Auth.clear();
         this.updateAuthUI(false);
         this.hideAuthLoading();
@@ -81,9 +93,10 @@ const SiteController = {
       this.updateAuthUI(true);
       this.hideAuthLoading();
       if (showHome) return;
-      // Keep the public landing page visible after login. Users open the app
-      // deliberately with the Dashboard button instead of being redirected.
+      // After a successful Google sign-in, take the user into their account.
+      // First-time users complete the owner profile before the dashboard opens.
       if (!user.profileComplete) this.showOwnerProfile(user);
+      else if (authCallback) this.unlockDashboard();
       if (authCallback) history.replaceState({}, document.title, location.pathname + location.hash);
     } catch (error) {
       this.hideAuthLoading();
