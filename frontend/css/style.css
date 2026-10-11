@@ -1265,3 +1265,12 @@ body.dark-mode select,body.dark-mode select.form-control,body.dark-mode .filter-
 @media (max-width: 768px) {
   .auth-bar { padding-left: 12px !important; padding-right: 12px !important; }
 }
+
+
+/* Mobile-only: hide the secondary dashboard auth bar (the one with the Home icon).
+   The dedicated mobile topbar already provides the app header, so keep desktop unchanged. */
+@media (max-width: 768px) {
+  body.dashboard-active #dashboardRoot > .main-content > .auth-bar {
+    display: none !important;
+  }
+}
