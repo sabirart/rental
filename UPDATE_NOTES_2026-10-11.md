@@ -37,3 +37,10 @@ With `DATABASE_URL`, PostgreSQL is the canonical store for tenant, property, roo
 - `node --check` on the changed backend files and new tests: passed.
 - Standalone payment arithmetic smoke checks: passed for money rounding, statuses, outstanding balances, and prior-period due calculations.
 - Full Jest/API suite and actual PostgreSQL/Google Drive integration: not verified in this environment. Dependency installation did not complete, and no live PostgreSQL or Google OAuth test environment was available. Do not skip the deployment checklist before enabling PostgreSQL for real accounts.
+
+
+## Google login session follow-up fix (2026-10-11)
+- Fixed OAuth return handling so an old demo-mode browser session cannot skip the real server session check after Google sign-in.
+- Cleared the demo-mode flag when returning from the Google OAuth callback.
+- Bumped the site-controller cache version so browsers fetch the corrected script.
+- This patch does not change database settings or disable certificate verification.

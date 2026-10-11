@@ -53,7 +53,11 @@ const SiteController = {
       document.getElementById('siteOverlay')?.setAttribute('aria-hidden', 'false');
       history.replaceState({}, document.title, location.pathname);
     }
-    if (!showHome && Auth.isDemoMode()) {
+    // A real Google OAuth return must always verify the server session first.
+    // Previously a demo-mode flag left in sessionStorage could short-circuit this
+    // flow, so the browser ignored the freshly-created Google session cookie.
+    if (authCallback) Auth.stopDemo?.();
+    if (!showHome && !authCallback && Auth.isDemoMode()) {
       this.hideAuthLoading();
       this.updateAuthUI(false);
       this.startDemo();
