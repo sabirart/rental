@@ -527,8 +527,9 @@ const Payments = {
             const propertyName = property ? escapeHTML(property.name) : 'No Property';
             const roomNum = fixedTenant.room_number || 'N/A';
             
-            const profilePic = fixedTenant.profile_pic 
-                ? `<img src="${escapeHTML(fixedTenant.profile_pic)}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">`
+            const safeTenantPhoto = safeImageSource(fixedTenant.profile_pic);
+            const profilePic = safeTenantPhoto
+                ? `<img src="${escapeHTML(safeTenantPhoto)}" alt="${escapeHTML(fixedTenant.name || 'Tenant')}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">`
                 : `<div style="width: 40px; height: 40px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: 500; color: var(--text-light); flex-shrink: 0;">${escapeHTML(fixedTenant.name.charAt(0).toUpperCase())}</div>`;
             
             tenantInfoHTML = `
@@ -623,15 +624,6 @@ const Payments = {
     },
 
     setupFormHandlers() {
-        setTimeout(() => {
-            document.querySelectorAll('#paymentForm input[type="number"]').forEach(input => {
-                input.addEventListener('wheel', function(e) {
-                    e.preventDefault();
-                    const container = this.closest('.modal-body');
-                    if (container) container.scrollTop += e.deltaY;
-                }, { passive: false });
-            });
-        }, 100);
         
         document.querySelectorAll('.status-btn').forEach(btn => {
             btn.addEventListener('click', function() {

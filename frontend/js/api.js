@@ -166,7 +166,7 @@ const API = {
         box.innerHTML = `
             <div class="session-expired-box">
                 <h3>Session expired</h3>
-                <p>Your session has expired. Your data is saved in your Google Drive - refresh to reconnect, or sign in with Google again.</p>
+                <p>Your session has expired. Your saved data remains in your account storage and available recovery backups. Refresh to reconnect, or sign in with Google again.</p>
                 <div class="session-expired-actions">
                     <button type="button" class="session-refresh-btn">Refresh</button>
                     <button type="button" class="session-login-btn">Continue with Google</button>

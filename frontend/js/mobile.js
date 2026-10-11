@@ -507,8 +507,9 @@
         if (isAuthenticated && user) {
             const safeName = (typeof escapeHTML === 'function') ? escapeHTML(user.name || 'User') : (user.name || 'User');
             const initial = (user.name || 'U').charAt(0).toUpperCase();
-            const avatarHTML = user.profilePic
-                ? `<img src="${escapeHTML ? escapeHTML(user.profilePic) : user.profilePic}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`
+            const safeAvatarSource = (typeof safeImageSource === 'function') ? safeImageSource(user.profilePic) : '';
+            const avatarHTML = safeAvatarSource
+                ? `<img src="${escapeHTML(safeAvatarSource)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`
                 : initial;
             container.innerHTML = `
                 <div id="mobileUserInfo" style="display:flex;align-items:center;gap:8px;cursor:pointer;">

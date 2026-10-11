@@ -62,11 +62,8 @@ const Settings = {
         }
         
         // FIXED: Apply dark mode class immediately
-        if (darkMode) {
-            document.body.classList.add('dark-mode');
-        } else {
-            document.body.classList.remove('dark-mode');
-        }
+        document.body.classList.toggle('dark-mode', darkMode);
+        document.documentElement.classList.toggle('dark-mode', darkMode);
 
         // Currency
         const currency = localStorage.getItem('currencySymbol') || '$';
@@ -85,14 +82,8 @@ const Settings = {
             
             this._darkModeHandler = (e) => {
                 const isDark = e.target.checked;
-                localStorage.setItem('darkMode', isDark);
-                
-                // FIXED: Apply class immediately with smooth transition
-                if (isDark) {
-                    document.body.classList.add('dark-mode');
-                } else {
-                    document.body.classList.remove('dark-mode');
-                }
+                if (typeof window.setRentalTheme === 'function') window.setRentalTheme(isDark);
+                else { localStorage.setItem('darkMode', String(isDark)); document.body.classList.toggle('dark-mode', isDark); document.documentElement.classList.toggle('dark-mode', isDark); }
                 
                 showNotification(`Dark mode ${isDark ? 'enabled' : 'disabled'}`, 'success');
             };
@@ -377,11 +368,12 @@ const Settings = {
         
         if (Auth.isAuthenticated && Auth.user) {
             const user = Auth.user;
+            const safeProfileSource = (typeof safeImageSource === 'function') ? safeImageSource(user.profilePic || user.picture) : '';
             
             body.innerHTML = `
                 <div class="account-profile-row">
                     <button type="button" class="account-profile-trigger" aria-label="Edit owner profile">
-                      <span class="account-profile-avatar">${(user.profilePic || user.picture) ? `<img src="${user.profilePic || user.picture}" alt="">` : (user.name || user.email || 'U').charAt(0).toUpperCase()}</span>
+                      <span class="account-profile-avatar">${safeProfileSource ? `<img src="${this.escapeHtml(safeProfileSource)}" alt="">` : this.escapeHtml((user.name || user.email || 'U').charAt(0).toUpperCase())}</span>
                       <span class="account-profile-details"><strong>${this.escapeHtml(user.name || 'User')}</strong><span>${this.escapeHtml(user.email || '')}</span><small>Click to edit profile</small></span>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline" data-settings-account-action="logout">Sign out</button>
@@ -392,7 +384,7 @@ const Settings = {
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div>
                         <div style="font-weight: 500;">Google account not connected</div>
-                        <div style="color: var(--text-light); font-size: 0.85rem;">Continue with Google to save data to your own Drive.</div>
+                        <div style="color: var(--text-light); font-size: 0.85rem;">Continue with Google to securely save and restore your rental data.</div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button type="button" class="btn btn-sm btn-primary" data-settings-account-action="google">Continue with Google</button>

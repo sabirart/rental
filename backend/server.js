@@ -112,9 +112,23 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Rental Management API is running', timestamp: new Date().toISOString(), version: process.env.npm_package_version || '1.0.0' });
 });
 // Readiness: configuration needed for sign-in is present (no external calls).
-app.get('/api/ready', (req, res) => {
+app.get('/api/ready', async (req, res) => {
   const missing = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET'].filter((k) => !process.env[k]);
-  res.status(missing.length ? 503 : 200).json({ status: missing.length ? 'NOT_READY' : 'READY', missing });
+  const warnings = [];
+  if (!process.env.DATABASE_URL) {
+    if (isProd) warnings.push('DATABASE_URL is not configured: business data stays in Google Drive JSON and the app must run as a single instance. Configure PostgreSQL to enable transactional account-data storage and cross-instance write locks.');
+    if (process.env.REQUIRE_DISTRIBUTED_LOCK === 'true') missing.push('DATABASE_URL');
+  } else {
+    try {
+      const Drive = require('./services/driveStore');
+      await Drive.checkDataStore();
+    } catch (error) {
+      warnings.push('PostgreSQL data store is configured but unavailable.');
+      missing.push('DATABASE_URL (unavailable)');
+    }
+  }
+  const notReady = missing.length > 0;
+  res.status(notReady ? 503 : 200).json({ status: notReady ? 'NOT_READY' : 'READY', missing, warnings });
 });
 
 app.use('/api/*', (req, res) => res.status(404).json({ success: false, error: `Route not found: ${req.method} ${req.originalUrl}` }));

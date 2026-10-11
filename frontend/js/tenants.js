@@ -77,8 +77,9 @@ const Tenants = {
             const duesPaid = latestPayment ? latestPayment.previous_dues_enabled !== false : false;
             const componentUnpaidStyle = (enabled, amount) => (!enabled && Number(amount || 0) > 0) ? 'color:#ff8c00;font-weight:600;' : '';
 
-            const profilePic = tenant.profile_pic 
-                ? `<img src="${escapeHTML(tenant.profile_pic)}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">`
+            const profilePicSource = safeImageSource(tenant.profile_pic);
+            const profilePic = profilePicSource
+                ? `<img src="${escapeHTML(profilePicSource)}" alt="${escapeHTML(tenant.name || 'Tenant')} profile" loading="lazy" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">`
                 : `<div style="width: 40px; height: 40px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: 500; color: var(--text-light);">${tenant.name ? escapeHTML(tenant.name.charAt(0).toUpperCase()) : '?'}</div>`;
             
             html += `
@@ -424,9 +425,9 @@ const Tenants = {
         ];
         (payment.custom_charges || []).forEach(c => rows.push([c.label || 'Other Charge', c.amount || 0]));
 
-        const amountPaid = payment.status === 'paid' ? (payment.total_payment || 0)
-            : payment.status === 'unpaid' ? 0
-            : (payment.amount_paid || 0);
+        const amountPaid = payment.amount_paid != null
+            ? Math.max(0, Math.min(Number(payment.total_payment || 0), Number(payment.amount_paid) || 0))
+            : (payment.status === 'paid' ? Number(payment.total_payment || 0) : 0);
         const remaining = Math.max(0, (payment.total_payment || 0) - amountPaid);
 
         win.document.write(`
@@ -886,8 +887,8 @@ const Tenants = {
                 
                 <div class="tenant-details-header">
                     <div class="tenant-details-header-left">
-                        ${tenant.profile_pic 
-                            ? `<img src="${escapeHTML(tenant.profile_pic)}" class="tenant-details-avatar">`
+                        ${safeImageSource(tenant.profile_pic) 
+                            ? `<img src="${escapeHTML(safeImageSource(tenant.profile_pic))}" class="tenant-details-avatar" alt="${escapeHTML(tenant.name || 'Tenant')}">`
                             : `<div class="tenant-details-avatar-placeholder">${escapeHTML(tenant.name.charAt(0).toUpperCase())}</div>`
                         }
                         <div class="tenant-details-name-section">
@@ -993,7 +994,7 @@ const Tenants = {
             detailsAvatar.addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                const src = tenant.profile_pic;
+                const src = safeImageSource(tenant.profile_pic);
                 if (!src) return;
                 const preview = document.createElement('div');
                 preview.className = 'image-preview-overlay';
@@ -1267,7 +1268,6 @@ const Tenants = {
                 });
             }
             document.querySelectorAll('#tenantForm input[type="number"]').forEach(input => {
-                input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
             });
             
             const propertySelect = document.getElementById('tenantProperty');
@@ -1715,8 +1715,8 @@ const Tenants = {
                     <div class="settings-form-group" style="flex: 0 0 auto; text-align: center;">
                         <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-light); font-weight: 500; display: block; margin-bottom: 4px;">Profile Picture</label>
                         <div id="tenantProfilePicker" style="width: 100px; height: 100px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 500; color: var(--text-light); cursor: pointer; border: 2px dashed var(--border); overflow: hidden; margin: 0 auto;">
-                            ${tenant.profile_pic 
-                                ? `<img id="profilePicPreviewImg" style="width: 100%; height: 100%; object-fit: cover; display: block;" src="${escapeHTML(tenant.profile_pic)}">` 
+                            ${safeImageSource(tenant.profile_pic) 
+                                ? `<img id="profilePicPreviewImg" style="width: 100%; height: 100%; object-fit: cover; display: block;" src="${escapeHTML(safeImageSource(tenant.profile_pic))}" alt="Profile picture preview">` 
                                 : `<span id="profilePicPlaceholder">+</span>`
                             }
                         </div>
@@ -1852,7 +1852,6 @@ const Tenants = {
         
         setTimeout(async () => {
             document.querySelectorAll('#tenantForm input[type="number"]').forEach(input => {
-                input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
             });
             
             const propertySelect = document.getElementById('tenantProperty');
@@ -2212,22 +2211,23 @@ const Tenants = {
         documents.forEach((doc) => {
             const type = String(doc.type || '').toLowerCase();
             const name = String(doc.name || 'Document');
-            const safeData = escapeHTML(doc.data || '');
-            const isImage = type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(name);
-            const isPdf = type === 'application/pdf' || /\.pdf$/i.test(name);
+            const safeSourceValue = safeDocumentSource(doc.data, type);
+            const safeData = escapeHTML(safeSourceValue);
+            const isImage = (type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) && /^data:image\//i.test(safeSourceValue);
+            const isPdf = (type === 'application/pdf' || /\.pdf$/i.test(name)) && /^data:application\/pdf;base64,/i.test(safeSourceValue);
             let preview = '';
             if (isImage) {
-                preview = `<div class="document-preview document-image-preview"><img src="${safeData}" alt="${escapeHTML(name)}"></div>`;
+                preview = `<div class="document-preview document-image-preview"><img src="${escapeHTML(safeImageSource(safeSourceValue))}" alt="${escapeHTML(name)}"></div>`;
             } else if (isPdf) {
                 preview = `<div class="document-preview document-pdf-preview"><iframe src="${safeData}" title="${escapeHTML(name)}"></iframe></div>`;
             } else {
-                preview = `<div class="document-preview document-file-preview"><div class="document-file-icon">DOC</div><p>This file type cannot be previewed directly in the browser.</p></div>`;
+                preview = `<div class="document-preview document-file-preview"><div class="document-file-icon">DOC</div><p>${safeSourceValue ? 'This file type cannot be previewed directly in the browser.' : 'This document has an unsupported or invalid file source.'}</p></div>`;
             }
             html += `
                 <div class="document-view-card">
                     <div class="document-view-card-header">
                         <div><strong>${escapeHTML(name)}</strong><span>${getFileSize(doc.size)}</span></div>
-                        <a href="${safeData}" download="${escapeHTML(name)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">Download</a>
+                        ${safeSourceValue ? `<a href="${safeData}" download="${escapeHTML(name)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">Download</a>` : '<span class="detail-empty">Unavailable</span>'}
                     </div>
                     ${preview}
                 </div>

@@ -50,6 +50,22 @@ describe('payments: server is the source of truth (C-01)', () => {
     expect((await a.post('/api/payments').send(pay(t))).status).toBe(201);
     expect((await a.post('/api/payments').send(pay(t))).status).toBe(400);
   });
+  test('payment audit records creation, changes and deletion and is account-scoped', async () => {
+    const { a, prop } = await fresh();
+    const t = (await a.post('/api/tenants').send(tenantBody({ propertyId: prop.id }))).body.data;
+    const created = await a.post('/api/payments').send(pay(t, { amountPaid: 1000 }));
+    expect(created.status).toBe(201);
+    await a.put(`/api/payments/${created.body.data.id}`).send(pay(t, { amountPaid: 3000 }));
+    const audit = await a.get(`/api/payments/audit?paymentId=${created.body.data.id}`);
+    expect(audit.status).toBe(200);
+    expect(audit.body.data.map((entry) => entry.action)).toEqual(['updated', 'created']);
+    expect(audit.body.data[0]).toMatchObject({ paymentId: created.body.data.id, before: { amount_paid: 1000 }, after: { amount_paid: 3000 } });
+    await a.delete(`/api/payments/${created.body.data.id}`);
+    expect((await a.get(`/api/payments/audit?paymentId=${created.body.data.id}`)).body.data[0].action).toBe('deleted');
+    const other = agentFor('audit-other');
+    expect((await other.get('/api/payments/audit')).body.data).toEqual([]);
+  });
+
   test('client cannot choose the payment id', async () => {
     const { a, prop } = await fresh();
     const t = (await a.post('/api/tenants').send(tenantBody({ propertyId: prop.id }))).body.data;
@@ -100,6 +116,20 @@ describe('payments rollover (H-01, H-02)', () => {
     expect(r.body.data.placeholder).toBeUndefined();
     expect((await a.get('/api/payments')).body.data).toHaveLength(1);
   });
+  test('new period carries the previous period outstanding balance, including partial-payment remainder', async () => {
+    const { outstandingBalance, previousPeriodDues } = require('../services/paymentMath');
+    expect(outstandingBalance({ total_payment: 10000, amount_paid: 2500, status: 'partial' })).toBe(7500);
+    expect(outstandingBalance({ total_payment: 10000, amount_paid: 10000, status: 'paid' })).toBe(0);
+    expect(outstandingBalance({ total_payment: 10000, status: 'paid' })).toBe(0);
+    const data = { payments: [
+      { tenant_id: 't1', month: 12, year: 2025, total_payment: 10000, amount_paid: 2500, status: 'partial' },
+      { tenant_id: 't1', month: 1, year: 2026, total_payment: 8000, amount_paid: 0, status: 'unpaid' }
+    ] };
+    expect(previousPeriodDues(data, 't1', 2, 2026)).toBe(8000);
+    expect(previousPeriodDues(data, 't1', 1, 2026)).toBe(7500);
+    expect(previousPeriodDues(data, 'other', 2, 2026)).toBe(0);
+  });
+
   test('rooms without rent produce an "unbilled" row, never "paid"', async () => {
     const { a } = await fresh();
     const prop = await seedProperty(a, { name: 'Free Rooms', baseRent: 0 });
@@ -238,5 +268,22 @@ describe('recycle bin & settings', () => {
     expect((await a.get('/api/recycle/count')).body.data.total).toBe(2);
     const snaps = (await a.get('/api/auth/backup/status')).body.data.backups;
     expect(snaps.length).toBeGreaterThan(0);
+  });
+});
+
+describe('owner profile image validation', () => {
+  test('rejects arbitrary external image hosts and SVG data URLs', async () => {
+    const a = agentFor('profile-image-validation');
+    const external = await a.put('/api/auth/profile').send({ name: 'Owner', profilePic: 'https://evil.example/avatar.png' });
+    expect(external.status).toBe(400);
+    const svg = await a.put('/api/auth/profile').send({ name: 'Owner', profilePic: 'data:image/svg+xml;base64,PHN2Zz4=' });
+    expect(svg.status).toBe(400);
+  });
+  test('accepts Google profile image URLs and supported raster data URLs', async () => {
+    const a = agentFor('profile-image-allowed');
+    const google = await a.put('/api/auth/profile').send({ name: 'Owner', profilePic: 'https://lh3.googleusercontent.com/a/avatar' });
+    expect(google.status).toBe(200);
+    const raster = await a.put('/api/auth/profile').send({ name: 'Owner', profilePic: 'data:image/jpeg;base64,/9j/2Q==' });
+    expect(raster.status).toBe(200);
   });
 });

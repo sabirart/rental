@@ -3,9 +3,10 @@ const { AppError } = require('../middleware/errorHandler');
 /**
  * Single source of truth for the persisted data format version.
  *  v1/v2  – early Drive JSON layouts (no explicit rooms/recycleBin guarantees)
- *  v3     – current: properties, rooms, tenants, payments, recycleBin, settings
+ *  v3     – properties, rooms, tenants, payments, recycleBin, settings
+ *  v4     – durable payment audit records and session revocations
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const COLLECTIONS = ['properties', 'rooms', 'tenants', 'payments', 'recycleBin'];
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -24,6 +25,8 @@ function emptyData(userId) {
     tenants: [],
     payments: [],
     recycleBin: [],
+    paymentAudit: [],
+    authRevocations: [],
     settings: { user_id: userId, ...DEFAULT_SETTINGS }
   };
 }
@@ -37,6 +40,8 @@ function emptyData(userId) {
 function migrate(data, userId) {
   let doc = data && typeof data === 'object' && !Array.isArray(data) ? data : emptyData(userId);
   for (const key of COLLECTIONS) if (!Array.isArray(doc[key])) doc[key] = [];
+  if (!Array.isArray(doc.paymentAudit)) doc.paymentAudit = [];
+  if (!Array.isArray(doc.authRevocations)) doc.authRevocations = [];
   if (!doc.settings || typeof doc.settings !== 'object') doc.settings = { user_id: userId, ...DEFAULT_SETTINGS };
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) if (doc.settings[k] === undefined) doc.settings[k] = v;
   if (!doc.user || typeof doc.user !== 'object') doc.user = { id: userId, profileComplete: false };

@@ -3,9 +3,22 @@ const Drive = require('../services/driveStore');
 const UserSettings = require('./UserSettings');
 const { httpError } = require('../middleware/errorHandler');
 const { newId } = require('../utils/id');
-const { toMoney, computeTotal, statusFor, receivedFromFlags } = require('../services/paymentMath');
+const { toMoney, computeTotal, statusFor, receivedFromFlags, outstandingBalance, previousPeriodDues } = require('../services/paymentMath');
 
 const now = () => new Date().toISOString();
+const AUDIT_LIMIT = 50000;
+const AUDIT_FIELDS = ['id', 'tenant_id', 'month', 'year', 'monthly_rent', 'electricity', 'gas', 'previous_dues', 'total_payment', 'amount_paid', 'status', 'rent_enabled', 'electricity_enabled', 'gas_enabled', 'previous_dues_enabled', 'notes'];
+function auditPayment(d, action, before, after, userId) {
+  if (!Array.isArray(d.paymentAudit)) d.paymentAudit = [];
+  const context = Drive.getContext();
+  const snapshot = (p) => p ? Object.fromEntries(AUDIT_FIELDS.filter((key) => p[key] !== undefined).map((key) => [key, p[key]])) : null;
+  d.paymentAudit.push({
+    id: newId(), action, paymentId: (after || before)?.id || null, user_id: userId,
+    actor: { id: userId, name: context.userName || null, email: context.userEmail || null },
+    timestamp: now(), before: snapshot(before), after: snapshot(after)
+  });
+  if (d.paymentAudit.length > AUDIT_LIMIT) d.paymentAudit.splice(0, d.paymentAudit.length - AUDIT_LIMIT);
+}
 const samePeriod = (p, tenantId, month, year) => p.tenant_id === tenantId && Number(p.month) === Number(month) && Number(p.year) === Number(year);
 
 function enrich(p, d) {
@@ -74,7 +87,7 @@ function defaultRent(d, tenant) {
   const last = d.payments
     .filter((p) => p.tenant_id === tenant.id && Number(p.monthly_rent) > 0)
     .sort((a, b) => Number(b.year) - Number(a.year) || Number(b.month) - Number(a.month))[0];
-  if (last) return Number(last.monthly_rent);
+  if (last) return toMoney(last.monthly_rent);
   const room = d.rooms.find((r) => r.property_id === tenant.property_id && Number(r.room_number) === Number(tenant.room_number));
   const property = d.properties.find((x) => x.id === tenant.property_id);
   return toMoney(room?.rent_amount ?? property?.base_rent ?? 0);
@@ -111,6 +124,7 @@ class Payment {
       const p = { id: data.id || newId(), user_id: userId, tenant_id: data.tenantId, month: Number(data.month), year: Number(data.year), created_at: now() };
       applyCharges(p, data);
       d.payments.push(p);
+      auditPayment(d, 'created', null, p, userId);
       return enrich(p, d);
     });
   }
@@ -126,8 +140,10 @@ class Payment {
       if (d.payments.some((x) => x.id !== id && x.user_id === userId && samePeriod(x, data.tenantId, data.month, data.year))) {
         throw httpError('Payment already exists for this tenant for this month/year');
       }
+      const before = JSON.parse(JSON.stringify(p));
       Object.assign(p, { tenant_id: data.tenantId, month: Number(data.month), year: Number(data.year) });
       applyCharges(p, data);
+      auditPayment(d, 'updated', before, p, userId);
       return enrich(p, d);
     });
   }
@@ -136,7 +152,9 @@ class Payment {
     return Drive.mutate((d) => {
       const p = d.payments.find((x) => x.id === id && x.user_id === userId);
       if (!p) throw httpError('Payment not found');
+      const before = JSON.parse(JSON.stringify(p));
       d.payments = d.payments.filter((x) => x.id !== id);
+      auditPayment(d, 'deleted', before, null, userId);
       return p;
     });
   }
@@ -207,13 +225,17 @@ class Payment {
       const todo = missing(d, month, year);
       for (const t of todo) {
         const rent = defaultRent(d, t);
-        d.payments.push({
+        const dues = previousPeriodDues(d, t.id, month, year);
+        const total = computeTotal({ rent, previousDues: dues });
+        const payment = {
           id: `${t.id}-${year}-${month}`, user_id: userId, tenant_id: t.id, month, year,
-          monthly_rent: rent, electricity: 0, gas: 0, previous_dues: 0,
-          total_payment: rent, amount_paid: 0, status: statusFor(rent, 0), custom_charges: [], notes: null,
+          monthly_rent: rent, electricity: 0, gas: 0, previous_dues: dues,
+          total_payment: total, amount_paid: 0, status: statusFor(total, 0), custom_charges: [], notes: null,
           rent_enabled: true, electricity_enabled: true, gas_enabled: true, previous_dues_enabled: true,
           placeholder: true, created_at: now(), updated_at: now()
-        });
+        };
+        d.payments.push(payment);
+        auditPayment(d, 'rolled_over', null, payment, userId);
       }
       d.settings = { ...(d.settings || {}), user_id: userId, last_reset_month: month, last_reset_year: year };
       return { created: todo.length, month, year };

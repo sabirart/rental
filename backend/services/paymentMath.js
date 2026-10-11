@@ -36,4 +36,25 @@ function receivedFromFlags(charges) {
   ) / CENT;
 }
 
-module.exports = { MAX_MONEY, toMoney, computeTotal, statusFor, receivedFromFlags };
+
+function outstandingBalance(payment) {
+  if (!payment) return 0;
+  const total = toMoney(payment.total_payment ?? computeTotal({
+    rent: payment.monthly_rent, electricity: payment.electricity, gas: payment.gas, previousDues: payment.previous_dues
+  }));
+  const paid = payment.amount_paid != null
+    ? toMoney(payment.amount_paid)
+    : (payment.status === 'paid' ? total : 0);
+  return toMoney(Math.max(0, total - Math.min(total, paid)));
+}
+
+/** Carries the latest earlier period's unpaid balance into the new period. */
+function previousPeriodDues(data, tenantId, month, year) {
+  const period = Number(year) * 12 + Number(month);
+  const previous = (Array.isArray(data?.payments) ? data.payments : [])
+    .filter((p) => p.tenant_id === tenantId && (Number(p.year) * 12 + Number(p.month)) < period)
+    .sort((a, b) => Number(b.year) - Number(a.year) || Number(b.month) - Number(a.month))[0];
+  return outstandingBalance(previous);
+}
+
+module.exports = { MAX_MONEY, toMoney, computeTotal, statusFor, receivedFromFlags, outstandingBalance, previousPeriodDues };

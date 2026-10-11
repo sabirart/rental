@@ -1,6 +1,6 @@
 'use strict';
 process.env.JWT_SECRET = 'unit-secret-unit-secret-unit-secret-123';
-const { toMoney, computeTotal, statusFor, receivedFromFlags } = require('../services/paymentMath');
+const { toMoney, computeTotal, statusFor, receivedFromFlags, outstandingBalance, previousPeriodDues } = require('../services/paymentMath');
 const { migrate, emptyData, SCHEMA_VERSION } = require('../services/schema');
 const { encryptValue, decryptValue } = require('../utils/cookies');
 const UserSettings = require('../models/UserSettings');
@@ -23,6 +23,31 @@ describe('paymentMath', () => {
   test('flags: only an explicit true counts as received', () => {
     expect(receivedFromFlags([{ value: 10, enabled: true }, { value: 5, enabled: undefined }, { value: 3, enabled: false }])).toBe(10);
   });
+  test('unchecked charges remain due and only checked charges count as received', () => {
+    const total = computeTotal({ rent: 10000, electricity: 2000, gas: 1000, previousDues: 500 });
+    const received = receivedFromFlags([
+      { value: 10000, enabled: true }, { value: 2000, enabled: true },
+      { value: 1000, enabled: false }, { value: 500, enabled: false }
+    ]);
+    expect(total).toBe(13500);
+    expect(received).toBe(12000);
+    expect(outstandingBalance({ total_payment: total, amount_paid: received, status: 'partial' })).toBe(1500);
+  });
+  test('outstanding balance uses the recorded amount received and clamps safely', () => {
+    expect(outstandingBalance({ total_payment: 10000, amount_paid: 2500, status: 'partial' })).toBe(7500);
+    expect(outstandingBalance({ total_payment: 10000, amount_paid: 10000, status: 'paid' })).toBe(0);
+    expect(outstandingBalance({ total_payment: 10000, status: 'paid' })).toBe(0);
+    expect(outstandingBalance({ total_payment: 10000, amount_paid: 15000 })).toBe(0);
+  });
+  test('previous-period dues use the latest earlier period for that tenant only', () => {
+    const data = { payments: [
+      { tenant_id: 't1', month: 12, year: 2025, total_payment: 10000, amount_paid: 2500, status: 'partial' },
+      { tenant_id: 't1', month: 1, year: 2026, total_payment: 8000, amount_paid: 0, status: 'unpaid' }
+    ] };
+    expect(previousPeriodDues(data, 't1', 2, 2026)).toBe(8000);
+    expect(previousPeriodDues(data, 't1', 1, 2026)).toBe(7500);
+    expect(previousPeriodDues(data, 'other', 2, 2026)).toBe(0);
+  });
 });
 
 describe('schema.migrate', () => {
@@ -32,6 +57,14 @@ describe('schema.migrate', () => {
     expect(d.rooms).toEqual([]);
     expect(d.settings.monthly_reset_day).toBe(31);
     expect(d.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+  test('v3 data migrates to v4 without losing records and initializes durable operational logs', () => {
+    const d = migrate({ schemaVersion: 3, properties: [{ id: 'keep-me' }], rooms: [], tenants: [], payments: [], recycleBin: [] }, 'u');
+    expect(SCHEMA_VERSION).toBe(4);
+    expect(d.schemaVersion).toBe(4);
+    expect(d.properties).toEqual([{ id: 'keep-me' }]);
+    expect(d.paymentAudit).toEqual([]);
+    expect(d.authRevocations).toEqual([]);
   });
   test('legacy all-zero payments are flagged as placeholders', () => {
     const d = migrate({ ...emptyData('u'), payments: [{ id: 'x', monthly_rent: 0, total_payment: 0 }, { id: 'y', monthly_rent: 5, total_payment: 5 }] }, 'u');

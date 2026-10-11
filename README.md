@@ -1,8 +1,6 @@
 # Rental Manager
 
-Property, tenant and rent-payment manager. Express API + vanilla-JS single-page frontend served by the same
-service. Sign-in is Google OAuth only; each landlord's data is one JSON document in **their own Google Drive**
-(least-privilege `drive.file` scope).
+Property, tenant and rent-payment manager. Express API + vanilla-JS single-page frontend served by the same service. Sign-in is Google OAuth only. With `DATABASE_URL` configured, PostgreSQL is the canonical transactional account-data store and the existing per-owner Google Drive JSON is imported once as the migration source; Google Drive remains the recovery-backup destination. Without `DATABASE_URL`, the app retains the legacy Drive JSON store and should run as a single instance.
 
 ## Run locally
 ```bash
@@ -10,7 +8,7 @@ cd backend
 cp .env.example .env      # fill in Google OAuth credentials and a 32+ char JWT_SECRET
 npm ci
 npm start                 # http://localhost:5000
-npm test                  # 114 tests (API, storage, OAuth, import validation, frontend/jsdom)
+npm test                  # API, storage, OAuth, import validation, payment reconciliation, frontend/jsdom
 npm run lint:syntax       # node --check on every backend + frontend .js file
 ```
 The landing page has a **demo mode** (sample data, no sign-in) that needs no configuration.
@@ -20,8 +18,8 @@ The landing page has a **demo mode** (sample data, no sign-in) that needs no con
 |---|---|
 | Frontend `frontend/` | Static HTML/CSS/JS, no build step. No inline scripts or handlers (delegated `data-rm-action`, `js/actions.js`). Font Awesome is self-hosted in `vendor/`. |
 | API `backend/` | Express 4, route groups: auth, tenants, properties, payments, recycle, settings. Validators in `middleware/validation.js`. |
-| Storage `services/driveStore.js` | One JSON doc per user + snapshots in "Rental Manager Backups". Ownership-marked folders/files (`appProperties`), per-user write lock, Drive `version` pre-condition with retry, per-user cache revalidated by one metadata call. |
-| Schema `services/schema.js` | Single `SCHEMA_VERSION` (3); `migrate()` runs on every read. |
+| Storage `services/driveStore.js` | With `DATABASE_URL`: per-account PostgreSQL JSONB record, serialized by a PostgreSQL advisory lock, with a one-time import from the existing Drive JSON. Without it: legacy Drive JSON storage with per-process locking and version-change detection. Google Drive stores recovery snapshots in either mode. |
+| Schema `services/schema.js` | Single `SCHEMA_VERSION` (4); `migrate()` runs on every read. |
 | Backup import `services/backupSchema.js` | Allow-list validation of every record before anything is written. |
 | Auth | HMAC-signed 7-day session cookie (with session id, revocable on logout), Drive access token cookie, **AES-256-GCM encrypted** refresh-token cookie, origin/`Sec-Fetch-Site` CSRF guard. |
 
@@ -34,6 +32,9 @@ The landing page has a **demo mode** (sample data, no sign-in) that needs no con
 4. **Run exactly one instance** (see limitations).
 5. Existing deployments: `JWT_SECRET` must stay unchanged or users must sign in again. Old plaintext refresh-token cookies keep working and are re-encrypted on next refresh.
 
+## Production readiness
+See [`PRODUCTION_READINESS.md`](PRODUCTION_READINESS.md) for the release checklist, known session-revocation limitation, real Google OAuth/Drive verification, payment reconciliation, and accessibility/security checks that require the deployed environment. GitHub Actions CI is configured in `.github/workflows/ci.yml`.
+
 ## Operational notes
 * Backups: a snapshot is written before the first change of each UTC day and before every destructive action (restore, import, reset, clear). The newest `MAX_BACKUPS` (default 30) are kept.
 * Account deletion moves only app-tracked files to the Google Drive **trash** (recoverable ~30 days) unless `permanent:true` is sent; foreign files in those folders are never touched.
@@ -41,3 +42,10 @@ The landing page has a **demo mode** (sample data, no sign-in) that needs no con
 
 ## Known limitations
 See `AUDIT_RESPONSE.md` ("Not done / partially done").
+
+
+### Multi-instance deployment and session revocation
+
+For production multi-instance deployments, configure the same reachable PostgreSQL `DATABASE_URL` on every instance. PostgreSQL then becomes the canonical account-data store (`rental_manager_account_data` JSONB row per user), with advisory locks around each read/modify/write mutation and a one-time non-destructive import from that user's existing Drive JSON. Google Drive remains the recovery-backup destination. The legacy Drive-only mode is still available for single-instance deployments. Set `REQUIRE_DISTRIBUTED_LOCK=true` to make `/api/ready` return `503 NOT_READY` when `DATABASE_URL` is absent or unavailable. Keep database credentials private and take normal PostgreSQL backups; Drive snapshots remain an additional recovery layer.
+
+The session revocation table is created automatically. If PostgreSQL is configured but temporarily unavailable, authenticated requests fail closed with a `503` response rather than silently bypassing the shared revocation check.

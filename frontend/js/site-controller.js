@@ -52,7 +52,7 @@ const SiteController = {
       document.getElementById('siteOverlay')?.setAttribute('aria-hidden', 'false');
       history.replaceState({}, document.title, location.pathname);
     }
-    if (Auth.isDemoMode()) {
+    if (!showHome && Auth.isDemoMode()) {
       this.hideAuthLoading();
       this.updateAuthUI(false);
       this.startDemo();
@@ -158,8 +158,9 @@ const SiteController = {
     document.getElementById('ownerProfileNext').textContent = user.profileComplete ? 'Save changes' : 'Next';
     const photo = document.getElementById('ownerProfilePhotoPreview');
     const fallback = document.getElementById('ownerProfilePhotoFallback');
-    const currentPhoto = user.profilePic || user.picture || '';
-    if (photo) { photo.dataset.profilePic = currentPhoto; photo.src = currentPhoto; photo.style.display = currentPhoto ? 'block' : 'none'; }
+    const rawCurrentPhoto = user.profilePic || user.picture || '';
+    const currentPhoto = (typeof safeImageSource === 'function') ? safeImageSource(rawCurrentPhoto) : '';
+    if (photo) { photo.dataset.profilePic = currentPhoto; if (currentPhoto) photo.src = currentPhoto; else photo.removeAttribute('src'); photo.style.display = currentPhoto ? 'block' : 'none'; }
     if (fallback) fallback.style.display = currentPhoto ? 'none' : 'grid';
     const picker = document.getElementById('ownerProfilePhotoInput'); if (picker) picker.value = '';
     modal.classList.add('active'); document.body.style.overflow = 'hidden';

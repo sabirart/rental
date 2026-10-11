@@ -6,10 +6,15 @@ const DashboardAuthBar = {
     this._initialized = true;
     // Place the signed-in avatar on the right, after notifications.
     const desktopRight = document.querySelector('#authBar .auth-bar-right');
+    const desktopGoogle = document.getElementById('appGoogleStartBtn');
+    if (desktopRight && desktopGoogle) desktopRight.appendChild(desktopGoogle);
     const desktopProfile = document.getElementById('authUserProfileTrigger');
     if (desktopRight && desktopProfile) desktopRight.appendChild(desktopProfile);
     const mobileRight = document.querySelector('#mobileTopbar .app-topbar-right');
+    const mobileGoogle = document.getElementById('mobileGoogleStartBtn');
     const mobileProfile = document.getElementById('mobileAuthProfileBtn');
+    // Keep guest sign-in on the same row, after the theme and notification icons.
+    if (mobileRight && mobileGoogle) mobileRight.appendChild(mobileGoogle);
     if (mobileRight && mobileProfile) mobileRight.appendChild(mobileProfile);
     this._updateAuthBar();
     Auth.addListener(() => this._updateAuthBar());
@@ -17,7 +22,8 @@ const DashboardAuthBar = {
   },
   _setAvatar(el, user) {
     if (!el) return;
-    const pic = user?.profilePic || user?.picture || '';
+    const rawPic = user?.profilePic || user?.picture || '';
+    const pic = (typeof safeImageSource === 'function') ? safeImageSource(rawPic) : '';
     const initial = (user?.name || user?.email || 'G').trim().charAt(0).toUpperCase() || 'G';
     if (pic) { el.innerHTML = ''; const img = document.createElement('img'); img.src = pic; img.alt = ''; img.referrerPolicy = 'no-referrer'; img.onerror = () => { el.textContent = initial; }; el.appendChild(img); }
     else el.textContent = initial;

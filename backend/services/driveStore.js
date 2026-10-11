@@ -12,22 +12,22 @@
  *    appProperties (rm_role / rm_user). Destructive operations act ONLY on
  *    objects whose IDs were resolved through those markers - never on
  *    "everything named Rental Manager".
- *  - Write consistency: writes are serialised per user inside one process and
- *    additionally guarded by a Drive `version` pre-condition. If another
- *    writer (second instance, overlapping deploy) changed the file since it
- *    was read, the mutation is re-run on fresh data instead of silently
- *    overwriting it. (Drive has no atomic compare-and-swap, so the check/
- *    write window is small but not zero: run a single instance until the
- *    canonical store moves to a real database - see README.)
+ *  - Write consistency: PostgreSQL mode uses a shared per-account advisory
+ *    lock around each mutation and stores the canonical JSONB record in the
+ *    database. Legacy Drive-only mode serializes writes in-process and checks
+ *    the Drive version before updating; Drive has no atomic compare-and-swap,
+ *    so legacy mode must remain single-instance.
  *  - Bounded read cost: folder/file ids and the parsed file are cached per
  *    user and revalidated with a single metadata call.
  */
 const { google } = require('googleapis');
+const { Pool } = require('pg');
 const { AsyncLocalStorage } = require('async_hooks');
 const { Readable } = require('stream');
 const { AppError } = require('../middleware/errorHandler');
 const { SCHEMA_VERSION, COLLECTIONS, emptyData, migrate } = require('./schema');
 const { validateBackup, countsOf } = require('./backupSchema');
+const { withDistributedWriteLock } = require('./distributedLock');
 
 const FOLDER_NAME = 'Rental Manager';
 const DATA_FILE_NAME = 'rental-manager-data.json';
@@ -45,6 +45,8 @@ const mutationQueues = new Map();
 const refsCache = new Map(); // userId -> { folderId, fileId, backupFolderId }
 const dataCache = new Map(); // userId -> { fileId, version, json }
 let driveFactory = null; // test seam: (token, ctx) => drive-like client
+let dataPool = null;
+let dataSchemaPromise = null;
 
 const getContext = () => context.getStore() || {};
 const nowIso = () => new Date().toISOString();
@@ -166,9 +168,87 @@ function cacheSet(userId, entry) {
 }
 
 // -------------------------------------------------------------- read / write
+function getDataPool() {
+  if (!process.env.DATABASE_URL) return null;
+  if (!dataPool) {
+    dataPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: Number(process.env.DATA_STORE_POOL_SIZE) > 0 ? Number(process.env.DATA_STORE_POOL_SIZE) : 10,
+      connectionTimeoutMillis: 5000,
+      statement_timeout: 15000,
+      ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false' }
+    });
+    dataPool.on('error', (error) => console.error('PostgreSQL data-store pool error:', error.message));
+  }
+  return dataPool;
+}
+
+async function ensureDataSchema(pool) {
+  if (!dataSchemaPromise) {
+    dataSchemaPromise = pool.query(`CREATE TABLE IF NOT EXISTS rental_manager_account_data (
+      user_id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`).then(() => pool.query('CREATE INDEX IF NOT EXISTS rental_manager_account_data_updated_idx ON rental_manager_account_data (updated_at)'));
+    dataSchemaPromise.catch(() => { dataSchemaPromise = null; });
+  }
+  return dataSchemaPromise;
+}
+
+async function readPostgresRow(pool, userId) {
+  await ensureDataSchema(pool);
+  const result = await pool.query('SELECT data, updated_at FROM rental_manager_account_data WHERE user_id = $1', [String(userId)]);
+  return result.rows[0] || null;
+}
+
+async function checkDataStore() {
+  const pool = getDataPool();
+  if (!pool) return { configured: false, available: false };
+  await ensureDataSchema(pool);
+  await pool.query('SELECT 1');
+  return { configured: true, available: true };
+}
+
 async function readDriveData() {
   const userId = getContext().userId || 'anonymous';
-  const drive = driveClient();
+  const pool = getDataPool();
+  if (!pool) return readDriveDataFromDrive(userId, driveClient());
+
+  try {
+    let row = await readPostgresRow(pool, userId);
+    if (row) {
+      let drive = null;
+      try { drive = driveClient(); } catch (_) { /* primary data reads do not require Drive access */ }
+      const data = migrate(typeof row.data === 'string' ? parseJson(row.data, 'Your PostgreSQL data') : row.data, userId);
+      return { drive, folderId: null, file: null, data, postgres: true, updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null };
+    }
+    if (!row) {
+      // One-time, non-destructive migration: seed PostgreSQL from the existing
+      // Drive document. INSERT ... ON CONFLICT never overwrites a concurrent
+      // first write. The Drive source is retained as a recovery copy.
+      const drive = driveClient();
+      const legacy = await readDriveDataFromDrive(userId, drive);
+      const migrated = migrate(legacy.data, userId);
+      const payload = { ...migrated, schemaVersion: SCHEMA_VERSION, updatedAt: nowIso() };
+      await pool.query(
+        'INSERT INTO rental_manager_account_data (user_id, data, updated_at) VALUES ($1, $2::jsonb, NOW()) ON CONFLICT (user_id) DO NOTHING',
+        [String(userId), JSON.stringify(payload)]
+      );
+      row = await readPostgresRow(pool, userId);
+    }
+    if (!row) throw new Error('PostgreSQL row missing after initialization');
+    const data = migrate(typeof row.data === 'string' ? parseJson(row.data, 'Your PostgreSQL data') : row.data, userId);
+    let drive = null;
+    try { drive = driveClient(); } catch (_) { /* PostgreSQL is the primary store */ }
+    return { drive, folderId: null, file: null, data, postgres: true, updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    console.error('PostgreSQL account-data read failed:', error.message);
+    throw new AppError('Your account data store is temporarily unavailable. No changes were made; please retry shortly.', 503, 'DATA_STORE_UNAVAILABLE');
+  }
+}
+
+async function readDriveDataFromDrive(userId, drive) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       let refs = refsCache.get(userId);
@@ -204,6 +284,25 @@ async function writeDriveData(data, loaded, { force = false } = {}) {
   const userId = getContext().userId || 'anonymous';
   const meta = loaded || (await readDriveData());
   const payload = JSON.stringify({ ...data, schemaVersion: SCHEMA_VERSION, updatedAt: nowIso() });
+  if (meta.postgres || process.env.DATABASE_URL) {
+    const pool = getDataPool();
+    try {
+      await ensureDataSchema(pool);
+      await pool.query(
+        `INSERT INTO rental_manager_account_data (user_id, data, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+        [String(userId), payload]
+      );
+      meta.postgres = true;
+      meta.updatedAt = nowIso();
+      meta.file = null;
+      return data;
+    } catch (error) {
+      console.error('PostgreSQL account-data write failed:', error.message);
+      throw new AppError('Your account data could not be saved because the database is unavailable. No changes were saved; please retry.', 503, 'DATA_STORE_UNAVAILABLE');
+    }
+  }
   const media = { mimeType: 'application/json', body: Readable.from([payload]) };
   let result;
   if (meta.file) {
@@ -279,7 +378,7 @@ async function backupStatus() {
   return {
     available: hasExistingData || files.length > 0,
     hasExistingData,
-    liveUpdatedAt: current.file?.modifiedTime || null,
+    liveUpdatedAt: current.updatedAt || current.file?.modifiedTime || null,
     counts,
     retention: MAX_BACKUPS,
     backups: files.map((f) => ({ id: f.id, name: f.name, modifiedTime: f.modifiedTime || null, size: Number(f.size || 0) }))
@@ -289,8 +388,16 @@ async function backupStatus() {
 function replaceContents(target, next) {
   const keepUser = target.user || {};
   const keepStamp = target._autoBackupDate;
+  // Security revocations and the payment audit log are append-only operational
+  // records. A user-data import/restore must never erase them by omission.
+  const keepAudit = Array.isArray(target.paymentAudit) ? target.paymentAudit : [];
+  const keepRevocations = Array.isArray(target.authRevocations) ? target.authRevocations : [];
   Object.keys(target).forEach((k) => delete target[k]);
-  Object.assign(target, next, { user: { ...keepUser, ...(next.user || {}), id: keepUser.id || next.user?.id } });
+  Object.assign(target, next, {
+    user: { ...keepUser, ...(next.user || {}), id: keepUser.id || next.user?.id },
+    paymentAudit: keepAudit,
+    authRevocations: keepRevocations
+  });
   if (keepStamp) target._autoBackupDate = keepStamp;
 }
 
@@ -400,6 +507,16 @@ async function deleteUserAccountData({ permanent = false } = {}) {
     await remove(folder.id);
     result.folders += 1;
   }
+  const pool = getDataPool();
+  if (pool) {
+    try {
+      await ensureDataSchema(pool);
+      await pool.query('DELETE FROM rental_manager_account_data WHERE user_id = $1', [String(userId)]);
+    } catch (error) {
+      console.error('PostgreSQL account-data deletion failed:', error.message);
+      throw new AppError('The account data could not be fully deleted because the database is unavailable. Please retry or contact support.', 503, 'DATA_STORE_UNAVAILABLE');
+    }
+  }
   clearCaches(userId);
   return result;
 }
@@ -410,7 +527,7 @@ async function ensureUserData(userId, token, profile = {}) {
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
       const loaded = await readDriveData();
       const data = loaded.data;
-      const existed = !!loaded.file;
+      const existed = !!loaded.file || !!loaded.postgres;
       const before = JSON.stringify(data.user || {});
       data.user = {
         ...(data.user || {}), id: userId,
@@ -451,7 +568,7 @@ async function withUserWriteLock(userId, task) {
   const tail = previous.then(() => gate);
   mutationQueues.set(userId, tail);
   await previous;
-  try { return await task(); } finally { release(); if (mutationQueues.get(userId) === tail) mutationQueues.delete(userId); }
+  try { return await withDistributedWriteLock(userId, task); } finally { release(); if (mutationQueues.get(userId) === tail) mutationQueues.delete(userId); }
 }
 
 const todayUtc = () => nowIso().slice(0, 10);
@@ -524,6 +641,6 @@ module.exports = {
   driveClient, findOrCreateFolder, findDataFile, writeDriveData, emptyData, requireToken,
   backupStatus, createBackupSnapshot, restoreBackup, importValidated, startFreshAccount, snapshotBeforeChange,
   deletionPreview, deleteUserAccountData, ensureUserData, listBackups,
-  setDriveClientFactory, clearCaches, ConflictError,
+  setDriveClientFactory, clearCaches, ConflictError, checkDataStore,
   FOLDER_NAME, DATA_FILE_NAME, BACKUP_FOLDER_NAME, BACKUP_PREFIX, MAX_BACKUPS
 };

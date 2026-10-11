@@ -9,7 +9,7 @@ Test files are in `backend/tests/`.
 |---|---|---|
 | C-01 payment amount/status ignored | ✅ | Server stores the validated `amountPaid` (0 ≤ x ≤ total), derives status from it; status-only clients handled; omitted flags fail **closed**; stale comment removed. `business.test.js` |
 | F-01 deletion by folder name | ✅ | Folders/files are stamped with `appProperties` ownership markers; legacy folders adopted once; deletion acts only on tracked IDs, trashes by default (recoverable), skips and reports foreign files, keeps folders that still hold foreign files; preview endpoint + preview text in the delete dialog; look-alike folder fixtures tested. `storage.test.js` |
-| F-02 / H-04 concurrency & storage | 🟡 | Per-user lock + Drive `version` pre-condition + automatic retry on fresh data (competing-writer test); folder/file id and parsed-file cache (repeat read = 1 metadata call, was 3); daily snapshot folded into the same write. **Remaining:** Drive has no atomic compare-and-swap, so a very small check→write window exists; run **one instance**. Images/documents are still inside the JSON file and the canonical store is still Drive (moving to a database/separate files is a larger redesign). |
+| F-02 / H-04 concurrency & storage | 🟡 | With `DATABASE_URL`, PostgreSQL JSONB is the canonical account-data store; a per-account advisory lock serializes mutations, and the existing Drive JSON is imported once and retained as a recovery source. Without a shared DB, legacy Drive JSON mode remains single-instance only. **Still requires:** live PostgreSQL migration/concurrency/recovery verification. |
 | F-03 / M-02 import validation | ✅ | `services/backupSchema.js`: allow-listed fields, types/ranges, ids, duplicates, relationships, image/document data-URI checks, size/count caps; preview (`?preview=1`) → pre-import snapshot → replace. Same validator for restore and legacy migration. `backup.test.js` |
 | H-01 GET writes / 400 on parallel loads | ✅ | GETs are read-only; idempotent single-write `POST /payments/rollover`; client `loadData` is single-flight with one follow-up. |
 | H-02 zero rows shown "Paid" | ✅ | New `unbilled` status; placeholders are prefilled with last/room rent; counted correctly in stats; UI badge. |
@@ -21,9 +21,9 @@ Test files are in `backend/tests/`.
 | ID | Status | Notes |
 |---|---|---|
 | M-01 PII cache after sign-out | ✅ | Caches cleared on logout/clear, scoped to the account (`cache_owner`), images/document bodies never cached. |
-| F-05 / M-03 CSP | 🟡 | `script-src 'self'` (no inline), `script-src-attr 'none'`, no third-party hosts, Font Awesome self-hosted (no SRI needed). **Remaining:** `style-src 'unsafe-inline'` (≈120 inline style attributes); `innerHTML` templates remain – values go through the now attribute-safe `escapeHTML`, but a sink-by-sink audit of all ~70 assignments was not performed. |
-| M-04 session lifecycle | 🟡 | Public logout always clears cookies; session ids revocable on logout; refresh token encrypted (AES-256-GCM); Origin/`Sec-Fetch-Site` CSRF guard. **Remaining:** revocation list is in memory (lost on restart); no double-submit CSRF token. |
-| F-04 / L-03 schemaVersion | ✅ | One constant, migrate-on-read, never downgraded; newer files refused. |
+| F-05 / M-03 CSP | 🟡 | `script-src 'self'` (no inline), `script-src-attr 'none'`, no third-party hosts, Font Awesome self-hosted. Image/document URL allow-lists and owner-photo validation added. **Remaining:** `style-src 'unsafe-inline'` remains to preserve current inline styling; the full sink-by-sink review of all dynamic HTML templates is still not complete. |
+| M-04 session lifecycle | 🟡 | Public logout clears cookies; revocation is persisted to Drive when available and to PostgreSQL as a hashed session ID when `DATABASE_URL` is configured. Configured PostgreSQL checks fail closed on store errors. Refresh token encrypted (AES-256-GCM); Origin/`Sec-Fetch-Site` CSRF guard. **Remaining:** if both durable stores fail during logout, only in-process revocation is guaranteed; no double-submit CSRF token. |
+| F-04 / L-03 schemaVersion | ✅ | Schema v4, one constant, migrate-on-read, never downgraded; newer files refused. |
 | M-05 / F-09 errors | ✅ | Unknown → 500 with generic text + correlation id; Google 401/403/429 mapped; model messages are typed `AppError`s; stacks only for 5xx. |
 | M-06 client ids | ✅ | Ids generated server-side (`crypto.randomUUID`). |
 | M-07 double encoding | ✅ | `.escape()` removed; output escaping only. (Existing already-encoded values are not rewritten.) |
@@ -35,7 +35,7 @@ Test files are in `backend/tests/`.
 | M-13 static delivery | 🟡 | gzip compression, ETag revalidation for HTML/JS/CSS, 7-day caching for images/fonts, meta no-store removed. Not minified/bundled. |
 | M-14 export omits recycle bin | ✅ | UI export uses the server export; one import path with preview. |
 | M-15 reset day | ✅ | Rollover and "current period" (server and UI) honour `monthly_reset_day`; default 31 = calendar month. |
-| F-07 / L-01 legacy code | ✅ | Unused SQL models, DB stubs, migrations README removed; migration kept (validated, TLS verified by default). |
+| F-07 / L-01 legacy code | 🟡 | Older unused SQL models and the legacy `config/database.js` compatibility stub remain; `migrations/README.md` now documents the active PostgreSQL JSONB account-data store and first-use Drive import. Remove obsolete models in a separate cleanup after verifying no external integrations depend on them. |
 | F-08 tests | ✅ | See above. |
 | F-12 | 🟡 | See M-11. |
 
@@ -44,9 +44,10 @@ L-02 ✅ comments/docs rewritten (README) · L-04 ✅ shared id util · L-05 ✅
 
 Other defects found and fixed while testing: editing a room's name/rent wiped its tenant link; tenant edits that omitted photo/documents erased them; POST/PUT/DELETE were auto-retried after a network error (risk of duplicates); `/api/payments/rollover` race; demo mode failed to load rooms; Font Awesome v4-compat font was referenced but not shipped; receipts printed via inline `onload` (blocked by the new CSP).
 
-## Not implemented from "missing features" (Report 2 §7)
-Payment audit trail, server-side search/pagination, restore preview of a *Drive snapshot* (import has a preview).
+## Remaining work from the audit
+Server-side search/pagination and restore preview of a *Drive snapshot* remain unimplemented (import has a preview). A durable payment audit trail is stored with account data and exposed read-only through `GET /api/payments/audit`; create/update/delete/clear operations record actor, timestamp, action, payment ID, and before/after values. Audit history and session revocations are preserved through ordinary import/restore/reset replacement operations. Owner profile and tenant image URLs are allow-listed; document preview/download URLs are restricted to supported data URLs.
 
 ## Verification summary
-**Verified by execution:** 114 automated tests pass (`npm test`) – API, validation, account isolation, payments/rollover, rooms/tenants, recycle bin, storage/concurrency/caching, backups/retention/restore, account-deletion boundary, OAuth callback/refresh (Google endpoints mocked), error mapping, import validation (13 malicious/malformed backup cases plus preview, orphan, legacy-format and round-trip tests), frontend CSP-readiness, escaping, accessibility contracts, and a jsdom boot of the real served site in demo mode through every view; `node --check` on all 67 JS files; clean `npm ci --omit=dev` install; production-mode server started and probed over HTTP (health, readiness, CSP header, caching, auth 401); `npm audit --omit=dev` = 0.
-**Not verified (needs your environment):** real Google OAuth consent / token refresh / Drive quotas and latency (Drive is simulated by an in-memory fake that mimics the API shape); real browsers, mobile devices, responsive layout and visual rendering (jsdom has no layout engine); screen readers; load testing; the upgraded `googleapis` 185 against live Drive (only API-surface and mocked flows were exercised); legacy PostgreSQL migration against a real database (mocked `pg`).
+**Baseline reported by the previous audit run:** 114 automated tests passed before the current session/audit-trail additions.
+**Verified in this update:** `node scripts/check-syntax.js` reports 73 JavaScript files checked with zero syntax errors; changed backend files also pass `node --check`.
+**Not rerun in this environment:** Jest/API tests, dependency audit, and a live server smoke test. The package install could not complete here, so the new tests are included but have not been executed in this run. Real Google OAuth/Drive, real-browser/mobile rendering, screen readers, load testing, and live legacy-database migration still require their respective environments.

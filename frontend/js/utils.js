@@ -18,6 +18,28 @@ function escapeURL(str) {
     return encodeURIComponent(str);
 }
 
+function safeImageSource(value) {
+    const source = String(value || '').trim();
+    if (!source) return '';
+    if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+    try {
+        const url = new URL(source, window.location.origin);
+        if (url.protocol === 'https:' && (url.hostname === 'googleusercontent.com' || url.hostname.endsWith('.googleusercontent.com'))) return url.href;
+        if (url.origin === window.location.origin && url.protocol === window.location.protocol) return url.href;
+    } catch (_) { /* invalid URL */ }
+    return '';
+}
+
+function safeDocumentSource(value, type = '') {
+    const source = String(value || '').trim();
+    if (!source.startsWith('data:')) return '';
+    if (/^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+    if (/^data:application\/pdf;base64,[a-z0-9+/=\s]+$/i.test(source)) return source;
+    if (/^data:text\/plain;charset=utf-8,(?:[a-z0-9._~!$&'()*+,;=:@/?%-]|%[0-9a-f]{2})*$/i.test(source)) return source;
+    return '';
+}
+
+
 function formatCurrency(amount) {
     const currencySymbol = localStorage.getItem('currencySymbol') || '$';
     // Format number with commas
@@ -252,32 +274,19 @@ function truncateText(str, maxLength = 50) {
     return str.substring(0, maxLength) + '...';
 }
 
-// Disable mouse wheel scroll value change on number inputs, but allow container scroll
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('input[type="number"]').forEach(function(input) {
-        input.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            // Find the scrollable container
-            let container = this.closest('.modal-body, .recycle-box-body, .tenant-details-box, .table-container');
-            if (container) {
-                // Scroll the container
-                container.scrollTop += e.deltaY;
-                // Also scroll the main content if container is inside it
-                if (container.closest('.main-content')) {
-                    const mainContent = document.getElementById('mainContent');
-                    if (mainContent) {
-                        mainContent.scrollTop += e.deltaY;
-                    }
-                }
-            } else {
-                // If no container found, scroll the main content
-                const mainContent = document.getElementById('mainContent');
-                if (mainContent) {
-                    mainContent.scrollTop += e.deltaY;
-                }
-            }
-            return false;
-        }, { passive: false });
-    });
-});
+// Prevent mouse-wheel changes to numeric field values while keeping overlay scrolling usable.
+// Delegation covers inputs added dynamically in Add/Edit overlays.
+document.addEventListener('wheel', function(e) {
+    const input = e.target && e.target.closest ? e.target.closest('input[type="number"]') : null;
+    if (!input) return;
+
+    e.preventDefault();
+    const scrollSelectors = '.modal-body, .recycle-box-body, .tenant-details-box, .table-container, .modal-content, .recycle-box, .main-content';
+    let container = input.closest(scrollSelectors);
+    while (container && container.scrollHeight <= container.clientHeight + 1) {
+        const parent = container.parentElement;
+        container = parent && parent.closest ? parent.closest(scrollSelectors) : null;
+    }
+    if (!container) container = document.getElementById('mainContent');
+    if (container) container.scrollTop += e.deltaY;
+}, { passive: false, capture: true });

@@ -23,6 +23,24 @@ const paymentController = {
     } catch (e) { next(e); }
   },
 
+  async getAudit(req, res, next) {
+    try {
+      const data = await Drive.getData();
+      const requestedLimit = Number.parseInt(req.query.limit, 10);
+      const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(200, requestedLimit)) : 50;
+      const cursor = req.query.before ? String(req.query.before).split('|') : null;
+      const cursorTime = cursor?.[0] || null;
+      const cursorId = cursor?.slice(1).join('|') || '';
+      const rows = (Array.isArray(data.paymentAudit) ? data.paymentAudit : [])
+        .filter((entry) => entry.user_id === req.userId
+          && (!req.query.paymentId || entry.paymentId === req.query.paymentId)
+          && (!cursorTime || entry.timestamp < cursorTime || (entry.timestamp === cursorTime && entry.id < cursorId)))
+        .sort((a, b) => b.timestamp.localeCompare(a.timestamp) || b.id.localeCompare(a.id));
+      const page = rows.slice(0, limit);
+      res.json({ success: true, data: page, pagination: { limit, hasMore: rows.length > limit, nextBefore: page.length ? `${page[page.length - 1].timestamp}|${page[page.length - 1].id}` : null } });
+    } catch (e) { next(e); }
+  },
+
   async rollover(req, res, next) {
     try { res.json({ success: true, data: await Payment.rollover(req.userId) }); } catch (e) { next(e); }
   },
@@ -69,6 +87,11 @@ const paymentController = {
       if (req.query.confirm !== 'yes') throw new AppError('Confirmation required: this permanently removes every payment record. Resend with confirm=yes.', 400, 'CONFIRMATION_REQUIRED');
       await Drive.mutate(async (data) => {
         await Drive.snapshotBeforeChange(data, 'pre-clear-payments');
+        const removed = data.payments.filter((p) => p.user_id === req.userId);
+        if (!Array.isArray(data.paymentAudit)) data.paymentAudit = [];
+        const context = Drive.getContext();
+        for (const p of removed) data.paymentAudit.push({ id: newId(), action: 'cleared', paymentId: p.id, user_id: req.userId, actor: { id: req.userId, name: context.userName || null, email: context.userEmail || null }, timestamp: new Date().toISOString(), before: { ...p }, after: null });
+        if (data.paymentAudit.length > 50000) data.paymentAudit.splice(0, data.paymentAudit.length - 50000);
         data.payments = data.payments.filter((p) => p.user_id !== req.userId);
       });
       res.json({ success: true, message: 'All payments cleared successfully' });

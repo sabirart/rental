@@ -9,6 +9,32 @@ const { SCHEMA_VERSION } = require('../services/schema');
 const { parseCookies, setCookie, clearCookie, encryptValue, decryptValue } = require('../utils/cookies');
 const { clearDriveCookie, ensureUserData, getDriveToken, DRIVE_COOKIE, DRIVE_REFRESH_COOKIE, DRIVE_OWNER_COOKIE } = require('../services/googleDrive');
 
+async function revokeSessionDurably(req, res) {
+  const session = Auth.verifySession(req);
+  Auth.revokeSession(req); // immediate protection in this process, even if Drive is unavailable
+  if (!session?.sid || !session.sub) return;
+  req.userId = session.sub;
+  // Persist to a shared store as well as Drive when configured.
+  try { await Auth.persistRevocation(session); }
+  catch (error) { console.warn('PostgreSQL session revocation could not be saved:', error.message); }
+  try {
+    const token = await getDriveToken(req, res);
+    if (!token) return;
+    await Drive.runWithRequestContext(session.sub, token, () => Drive.mutate((data) => {
+      const now = Date.now();
+      const active = (Array.isArray(data.authRevocations) ? data.authRevocations : [])
+        .filter((entry) => Number(entry?.exp) >= now && entry.sid !== session.sid);
+      active.push({ sid: session.sid, exp: Number(session.exp), revokedAt: new Date().toISOString() });
+      data.authRevocations = active.slice(-10000);
+    }), { userName: session.name, userEmail: session.email });
+  } catch (error) {
+    // Do not block sign-out if Drive is temporarily unavailable. The in-process
+    // revocation still applies; persistent revocation will require a successful
+    // Drive write, so operators should monitor storage failures.
+    console.warn('Persistent session revocation could not be saved:', error.message);
+  }
+}
+
 const STATE_COOKIE = 'google_oauth_state';
 const YEAR = 31536000;
 
@@ -34,6 +60,20 @@ function friendlyGoogleError(error) {
   if (quota) return 'Your Google Drive storage is full. Free up space in Google Drive, Gmail, or Google Photos, then sign in again. Rental Manager saves your data in your own Google Drive.';
   if (error instanceof AppError) return error.message;
   return 'Google sign-in could not be completed. Please try again.';
+}
+
+function validateProfilePicture(value) {
+  if (value == null || value === '') return null;
+  const image = String(value).trim();
+  if (image.length > 7 * 1024 * 1024) throw new AppError('Profile image is too large. Please use an image smaller than 5 MB.', 413, 'PROFILE_IMAGE_TOO_LARGE');
+  const rasterData = /^data:image\/(?:jpeg|png|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(image);
+  let googleImage = false;
+  try {
+    const url = new URL(image);
+    googleImage = url.protocol === 'https:' && (url.hostname === 'googleusercontent.com' || url.hostname.endsWith('.googleusercontent.com'));
+  } catch (_) { /* not an absolute URL */ }
+  if (!rasterData && !googleImage) throw new AppError('Profile picture must be a supported raster image or a Google profile image.', 400, 'INVALID_PROFILE_IMAGE');
+  return image;
 }
 
 const userView = (req, u = {}) => ({
@@ -157,13 +197,13 @@ const authController = {
   async deleteAccount(req, res, next) {
     try {
       if (String(req.body?.confirmText || '').trim().toLowerCase() !== 'delete my account') throw new AppError('Type delete my account to confirm permanent deletion.', 400);
+      await revokeSessionDurably(req, res);
       const refresh = decryptValue(parseCookies(req)[DRIVE_REFRESH_COOKIE]);
       const deleted = await Drive.deleteUserAccountData({ permanent: req.body?.permanent === true });
       if (refresh) {
         try { await fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: refresh }) }); }
         catch (revokeError) { console.warn('Google token revocation after account deletion was skipped:', revokeError.message); }
       }
-      Auth.revokeSession(req);
       Auth.clearCookieHeader(res); clearDriveCookie(res); clearCookie(res, STATE_COOKIE);
       const message = deleted.mode === 'trash'
         ? 'Rental Manager data moved to your Google Drive trash (recoverable for 30 days) and you were signed out.'
@@ -174,7 +214,7 @@ const authController = {
 
   /** Public on purpose: logging out must work even when the session has already expired. */
   async logout(req, res) {
-    try { Auth.revokeSession(req); } catch (_) { /* nothing to revoke */ }
+    try { await revokeSessionDurably(req, res); } catch (_) { /* logout must always clear cookies */ }
     Auth.clearCookieHeader(res);
     clearDriveCookie(res);
     res.json({ success: true, message: 'Logged out successfully' });
@@ -192,7 +232,7 @@ const authController = {
         d.user.id = req.userId;
         d.user.name = String(name || d.user.name || req.user.name || '').trim();
         d.user.email = req.userEmail;
-        d.user.profilePic = profilePic !== undefined ? (profilePic || null) : (d.user.profilePic || req.user.profilePic || null);
+        d.user.profilePic = profilePic !== undefined ? validateProfilePicture(profilePic) : (d.user.profilePic || req.user.profilePic || null);
         if (profileComplete === true) d.user.profileComplete = true;
         return d.user;
       });

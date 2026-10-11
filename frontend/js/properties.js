@@ -40,8 +40,11 @@ const Properties = {
             const totalRooms = property.total_rooms || 0;
             
             const tenantNames = propertyTenants.map(t => escapeHTML(t.name));
-            const tenantList = tenantNames.length > 0 
-                ? tenantNames.map(name => `<span class="tenant-tag">${name}</span>`).join('')
+            const visibleTenants = tenantNames.slice(0, 3);
+            const extraTenants = tenantNames.slice(3);
+            const tenantList = tenantNames.length > 0
+                ? visibleTenants.map(name => `<span class="tenant-tag">${name}</span>`).join('') +
+                  (extraTenants.length ? `<span class="tenant-overflow-wrap"><button type="button" class="tenant-overflow-btn" aria-label="Show ${extraTenants.length} more tenants" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></button><span class="tenant-overflow-menu" hidden>${extraTenants.map(name => `<span>${name}</span>`).join('')}</span></span>` : '')
                 : '<span style="color: var(--text-lighter); font-size: 0.8rem;">No tenants</span>';
             
             const statusClass = property.status === 'active' ? 'badge-success' : 
@@ -51,7 +54,7 @@ const Properties = {
                 <div class="property-card">
                     <div class="card-header">
                         <h4>${escapeHTML(property.name)}</h4>
-                        <div class="property-card-head-actions"><span class="badge ${statusClass} property-status">${escapeHTML(property.status || 'Active')}</span><button type="button" class="property-more-btn" aria-label="Property options" aria-expanded="false" data-id="${escapeHTML(property.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button><div class="property-more-menu" hidden><button type="button" class="property-menu-edit" data-id="${escapeHTML(property.id)}">Edit property</button><button type="button" class="property-menu-delete" data-id="${escapeHTML(property.id)}">Delete property</button></div></div>
+                        <div class="property-card-head-actions"><span class="badge ${statusClass} property-status">${escapeHTML(property.status || 'Active')}</span><button type="button" class="property-more-btn" aria-label="Property options" aria-expanded="false" data-id="${escapeHTML(property.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></button><div class="property-more-menu" hidden><button type="button" class="property-menu-edit" data-id="${escapeHTML(property.id)}">Edit property</button><button type="button" class="property-menu-delete" data-id="${escapeHTML(property.id)}">Delete property</button></div></div>
                     </div>
                     <div class="card-body">
                         <div class="property-details">
@@ -83,8 +86,19 @@ const Properties = {
         container.querySelectorAll('.property-more-btn').forEach(btn => {
             btn.addEventListener('click', (event) => { event.stopPropagation(); const menu = btn.parentElement.querySelector('.property-more-menu'); const open = menu.hidden; container.querySelectorAll('.property-more-menu').forEach(m => m.hidden = true); container.querySelectorAll('.property-more-btn').forEach(b => b.setAttribute('aria-expanded','false')); menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); });
         });
-        container.querySelectorAll('.property-menu-edit').forEach(btn => btn.addEventListener('click', () => this.editProperty(btn.dataset.id)));
-        container.querySelectorAll('.property-menu-delete').forEach(btn => btn.addEventListener('click', () => this.deleteProperty(btn.dataset.id)));
+        container.querySelectorAll('.tenant-overflow-btn').forEach(btn => {
+            btn.addEventListener('click', event => {
+                event.stopPropagation();
+                const menu = btn.parentElement.querySelector('.tenant-overflow-menu');
+                const open = menu.hidden;
+                container.querySelectorAll('.tenant-overflow-menu').forEach(item => item.hidden = true);
+                container.querySelectorAll('.tenant-overflow-btn').forEach(item => item.setAttribute('aria-expanded','false'));
+                menu.hidden = !open;
+                btn.setAttribute('aria-expanded', String(open));
+            });
+        });
+        container.querySelectorAll('.property-menu-edit').forEach(btn => btn.addEventListener('click', (event) => { event.stopPropagation(); const menu=btn.closest('.property-more-menu'); if(menu) menu.hidden=true; const trigger=menu?.parentElement?.querySelector('.property-more-btn'); trigger?.setAttribute('aria-expanded','false'); this.editProperty(btn.dataset.id); }));
+        container.querySelectorAll('.property-menu-delete').forEach(btn => btn.addEventListener('click', (event) => { event.stopPropagation(); const menu=btn.closest('.property-more-menu'); if(menu) menu.hidden=true; const trigger=menu?.parentElement?.querySelector('.property-more-btn'); trigger?.setAttribute('aria-expanded','false'); this.deleteProperty(btn.dataset.id); }));
         container.querySelectorAll('.edit-property').forEach(btn => {
             btn.addEventListener('click', () => this.editProperty(btn.dataset.id));
         });
@@ -95,7 +109,8 @@ const Properties = {
             container.dataset.propertyMenuOutsideBound = '1';
             document.addEventListener('click', (event) => {
                 if (!event.target.closest('.property-card-head-actions')) {
-                    container.querySelectorAll('.property-more-menu').forEach(m => m.hidden = true);
+                    container.querySelectorAll('.property-more-menu, .tenant-overflow-menu').forEach(m => m.hidden = true);
+                    container.querySelectorAll('.tenant-overflow-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
                     container.querySelectorAll('.property-more-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
                 }
             });
@@ -181,7 +196,6 @@ const Properties = {
             this.setupDifferentRentHandlers();
             
             document.querySelectorAll('#propertyForm input[type="number"]').forEach(input => {
-                input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
             });
             
             const roomsInput = document.getElementById('propertyRooms');
@@ -329,7 +343,6 @@ const Properties = {
         }
         
         container.querySelectorAll('.room-rent-input').forEach(input => {
-            input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
             input.addEventListener('input', () => {
                 this._roomRentValues = this._roomRentValues || {};
                 this._roomRentValues[input.dataset.room] = input.value;
@@ -612,7 +625,6 @@ const Properties = {
             this.setupDifferentRentHandlers();
             
             document.querySelectorAll('#propertyForm input[type="number"]').forEach(input => {
-                input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
             });
             
             const roomsInput = document.getElementById('propertyRooms');
@@ -980,7 +992,6 @@ const Properties = {
             setTimeout(() => {
                 document.querySelectorAll('#newRoomNumber, #newRoomRent, #editRoomRent').forEach(input => {
                     if (input) {
-                        input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
                     }
                 });
             }, 100);
@@ -1017,7 +1028,6 @@ const Properties = {
                 
                 document.querySelectorAll('#editRoomRent').forEach(input => {
                     if (input) {
-                        input.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
                     }
                 });
             } catch (error) {

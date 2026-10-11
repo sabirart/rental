@@ -41,6 +41,15 @@ describe('platform & security basics', () => {
     await a.post('/api/auth/logout');
     expect((await a.get('/api/tenants')).status).toBe(401);
   });
+  test('logout persists the revocation in the account data for restart-safe checks', async () => {
+    const a = agentFor('durable-revoke');
+    const token = decodeURIComponent(a.cookie.match(/rental_session=([^;]+)/)[1]);
+    const sid = Auth.verifySession({ headers: { cookie: `rental_session=${token}` } }).sid;
+    await a.post('/api/auth/logout');
+    const dataFile = [...a.account.files.values()].find((file) => file.name === 'rental-manager-data.json' && !file.trashed);
+    expect(dataFile).toBeDefined();
+    expect(JSON.parse(dataFile.content).authRevocations).toEqual(expect.arrayContaining([expect.objectContaining({ sid })]));
+  });
   test('missing Drive token is 401, not a generic 400', async () => {
     const a = agentFor('notoken');
     const cookie = a.cookie.replace(/;\s*google_drive_token=[^;]*/, '');

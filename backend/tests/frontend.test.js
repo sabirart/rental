@@ -68,6 +68,22 @@ describe('escapeHTML (stored-XSS regression)', () => {
     expect(win.eval('escapeHTML(null)')).toBe('');
     expect(win.eval('escapeHTML(0)')).toBe('0');
   });
+  test('safeImageSource rejects empty values, unsafe schemes, and external hosts', () => {
+    expect(win.eval(`safeImageSource('')`)).toBe('');
+    expect(win.eval(`safeImageSource('javascript:alert(1)')`)).toBe('');
+    expect(win.eval(`safeImageSource('data:image/svg+xml,<svg onload=alert(1)>')`)).toBe('');
+    expect(win.eval(`safeImageSource('https://evil.example/avatar.png')`)).toBe('');
+    expect(win.eval(`safeImageSource('https://lh3.googleusercontent.com/avatar')`)).toBe('https://lh3.googleusercontent.com/avatar');
+    expect(win.eval(`safeImageSource('data:image/png;base64,iVBORw0KGgo=')`)).toBe('data:image/png;base64,iVBORw0KGgo=');
+  });
+  test('safeDocumentSource permits supported image/PDF and demo text URLs only', () => {
+    expect(win.eval(`safeDocumentSource('javascript:alert(1)','text/plain')`)).toBe('');
+    expect(win.eval(`safeDocumentSource('data:text/html,<img src=x onerror=alert(1)>','text/html')`)).toBe('');
+    expect(win.eval(`safeDocumentSource('data:application/pdf;base64,JVBERi0xLjQ=','application/pdf')`)).toBe('data:application/pdf;base64,JVBERi0xLjQ=');
+    expect(win.eval(`safeDocumentSource('data:image/png;base64,iVBORw0KGgo=','image/png')`)).toBe('data:image/png;base64,iVBORw0KGgo=');
+    expect(win.eval(`safeDocumentSource('data:text/plain;charset=utf-8,Demo%20document','text/plain')`)).toBe('data:text/plain;charset=utf-8,Demo%20document');
+  });
+
   test('billing period follows the reset day rule', () => {
     expect(win.eval('JSON.stringify(getBillingPeriod(new Date(2025, 0, 20)))')).toBe('{"month":1,"year":2025}');
     win.localStorage.setItem('monthly_reset_day', '25');

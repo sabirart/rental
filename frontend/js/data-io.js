@@ -257,9 +257,9 @@ const DataIO = {
         ];
         (payment.custom_charges || []).forEach(c => rows.push([c.label || 'Other Charge', c.amount || 0]));
 
-        const amountPaid = payment.status === 'paid' ? (payment.total_payment || 0)
-            : payment.status === 'unpaid' ? 0
-            : (payment.amount_paid || 0);
+        const amountPaid = payment.amount_paid != null
+            ? Math.max(0, Math.min(Number(payment.total_payment || 0), Number(payment.amount_paid) || 0))
+            : (payment.status === 'paid' ? Number(payment.total_payment || 0) : 0);
         const remaining = Math.max(0, (payment.total_payment || 0) - amountPaid);
         const tenantMeta = [house, room ? `Room ${room}` : ''].filter(Boolean).join(' · ');
 

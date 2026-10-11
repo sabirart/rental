@@ -3,8 +3,8 @@ services:
     name: rental-management
     runtime: node
     # Free instances sleep when idle (slow first request). Use a paid plan for real use.
-    # Keep numInstances at 1: data lives in one Google Drive JSON file per user and
-    # writes are only serialised/version-checked, not distributed-locked (see README).
+    # Keep one instance unless DATABASE_URL is configured on every instance.
+    # With the shared database configured, account writes use PostgreSQL advisory locks.
     plan: free
     buildCommand: cd backend && npm ci --omit=dev
     startCommand: cd backend && npm start
@@ -28,6 +28,10 @@ services:
         generateValue: true
       # Comma-separated extra browser origins allowed to call the API (same-origin needs none).
       - key: CORS_ORIGINS
+        sync: false
+      # Recommended PostgreSQL primary store for transactional account data, cross-instance write locks, and durable session revocations.
+      # Configure the same URL on every instance; existing Drive JSON is imported once and retained as a recovery source.
+      - key: DATABASE_URL
         sync: false
       # Optional one-time import from the retired PostgreSQL deployment.
       - key: LEGACY_DATABASE_URL
