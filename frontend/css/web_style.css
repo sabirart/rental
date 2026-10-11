@@ -472,3 +472,22 @@ body.dark-mode input,body.dark-mode textarea,body.dark-mode select{background-co
 body.dark-mode input::placeholder,body.dark-mode textarea::placeholder{color:#999}
 body.dark-mode .btn-google{background:#fff!important;color:#202124!important;border-color:#dadce0!important;box-shadow:0 1px 2px rgba(0,0,0,.16);border-radius:9px;font-weight:600;transition:box-shadow .18s ease,transform .18s ease}
 body.dark-mode .btn-google:hover{box-shadow:0 2px 7px rgba(0,0,0,.22);transform:translateY(-1px)}
+
+/* Complete dark-mode coverage for the public landing page, animated hero artwork, and account overlays. */
+html.dark-mode, html.dark-mode body { background:#171717 !important; color:#f3f3f3 !important; }
+html.dark-mode body > *, body.dark-mode #siteOverlay, body.dark-mode #siteOverlay * { color-scheme:dark; }
+body.dark-mode .site-topbar,body.dark-mode .site-header,body.dark-mode .site-footer,body.dark-mode footer,body.dark-mode .hero,body.dark-mode .hero .container,body.dark-mode .site-section,body.dark-mode .section,body.dark-mode .features,body.dark-mode .reviews,body.dark-mode .pricing,body.dark-mode .faq,body.dark-mode .cta-section,body.dark-mode .hero-img,body.dark-mode .dashboard-mock,body.dark-mode .dash-sidebar,body.dark-mode .dash-main,body.dark-mode .dash-card,body.dark-mode .mock-card,body.dark-mode .mock-widget,body.dark-mode .floating-card,body.dark-mode .hero-visual,body.dark-mode .hero-animation { background-color:#202020 !important; color:#f3f3f3 !important; border-color:#383838 !important; }
+body.dark-mode .hero h1,body.dark-mode .site-section h1,body.dark-mode .site-section h2,body.dark-mode .site-section h3,body.dark-mode .site-topbar a,body.dark-mode .site-footer a,body.dark-mode .feature-card h3,body.dark-mode .review-card h3,body.dark-mode .pricing-card h3,body.dark-mode .faq * { color:#f3f3f3 !important; }
+body.dark-mode .hero p,body.dark-mode .site-section p,body.dark-mode .site-footer p,body.dark-mode .feature-card p,body.dark-mode .review-card p,body.dark-mode .pricing-card p,body.dark-mode .site-section li { color:#bdbdbd !important; }
+body.dark-mode .hero svg,body.dark-mode .hero canvas,body.dark-mode .hero .animated-shape,body.dark-mode .hero .blob,body.dark-mode .hero .orb { filter:brightness(.72) saturate(.82); }
+body.dark-mode .hero .btn-outline,body.dark-mode .site-section .btn-outline,body.dark-mode .site-footer .btn-outline { background:#252525; color:#f3f3f3; border-color:#505050; }
+body.dark-mode .auth-modal,body.dark-mode .account-modal,body.dark-mode .auth-card,body.dark-mode .account-card,body.dark-mode .login-modal,body.dark-mode .modal-content { background:#202020 !important; color:#f3f3f3 !important; border-color:#383838 !important; }
+body.dark-mode .site-topbar,body.dark-mode .site-header { box-shadow:0 1px 0 #383838; }
+
+/* Override the landing-page base colors, which are scoped to #siteOverlay and otherwise remain light. */
+body.dark-mode #siteOverlay { background:#171717 !important; color:#f3f3f3 !important; }
+body.dark-mode #siteOverlay .site-topbar,body.dark-mode #siteOverlay .hero,body.dark-mode #siteOverlay .site-section,body.dark-mode #siteOverlay section,body.dark-mode #siteOverlay footer,body.dark-mode #siteOverlay .hero-img,body.dark-mode #siteOverlay .dashboard-mock,body.dark-mode #siteOverlay .dash-sidebar,body.dark-mode #siteOverlay .dash-main,body.dark-mode #siteOverlay .dash-card,body.dark-mode #siteOverlay .dash-chart,body.dark-mode #siteOverlay .feature-card,body.dark-mode #siteOverlay .review-card,body.dark-mode #siteOverlay .pricing-card,body.dark-mode #siteOverlay .faq-item { background-color:#202020 !important; color:#f3f3f3 !important; border-color:#383838 !important; }
+body.dark-mode #siteOverlay .dash-top,body.dark-mode #siteOverlay .dash-line,body.dark-mode #siteOverlay .line,body.dark-mode #siteOverlay .mock-card,body.dark-mode #siteOverlay .floating-card { background-color:#2b2b2b !important; border-color:#414141 !important; }
+body.dark-mode #siteOverlay .hero h1,body.dark-mode #siteOverlay h2,body.dark-mode #siteOverlay h3,body.dark-mode #siteOverlay h4,body.dark-mode #siteOverlay a,body.dark-mode #siteOverlay .dash-sidebar span { color:#f3f3f3; }
+body.dark-mode #siteOverlay .hero p,body.dark-mode #siteOverlay p,body.dark-mode #siteOverlay li { color:#bdbdbd; }
+body.dark-mode #siteOverlay .hero .hero-img svg,body.dark-mode #siteOverlay .hero .animated-shape,body.dark-mode #siteOverlay .hero .blob { filter:brightness(.7) saturate(.75); }

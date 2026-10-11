@@ -17,6 +17,10 @@ const App = {
     _initialized: false,
 
     _keepAliveInterval: null,
+    // Payment rollover is idempotent, but it is a write against Google Drive.
+    // Run it once per UTC day per open app session instead of before every
+    // post-save refresh (which otherwise adds avoidable network round-trips).
+    _rolloverCheckedDate: null,
 
     async init() {
         if (this._initialized) return;
@@ -107,9 +111,19 @@ const App = {
                 return;
             }
 
-            // Make sure this billing period's rows exist (one idempotent write), then read.
-            // A failed rollover must not block showing data.
-            try { await API.rolloverPayments(); } catch (e) { if (e.status === 401) throw e; }
+            // Ensure this billing period's rows exist. The rollover endpoint is
+            // idempotent, but still performs a Drive-backed mutation. Checking it
+            // once per UTC day avoids repeating that write on every save/refresh.
+            // Do not cache failures: a transient error can be retried on the next load.
+            const rolloverDate = new Date().toISOString().slice(0, 10);
+            if (this._rolloverCheckedDate !== rolloverDate) {
+                try {
+                    await API.rolloverPayments();
+                    this._rolloverCheckedDate = rolloverDate;
+                } catch (e) {
+                    if (e.status === 401) throw e;
+                }
+            }
 
             const [tenantsRes, propertiesRes, paymentsRes, settingsRes] = await Promise.all([
                 API.getTenants(),

@@ -91,7 +91,15 @@ const Properties = {
         container.querySelectorAll('.delete-property').forEach(btn => {
             btn.addEventListener('click', () => this.deleteProperty(btn.dataset.id));
         });
-        document.addEventListener('click', () => container.querySelectorAll('.property-more-menu').forEach(m => m.hidden = true), { once: true });
+        if (!container.dataset.propertyMenuOutsideBound) {
+            container.dataset.propertyMenuOutsideBound = '1';
+            document.addEventListener('click', (event) => {
+                if (!event.target.closest('.property-card-head-actions')) {
+                    container.querySelectorAll('.property-more-menu').forEach(m => m.hidden = true);
+                    container.querySelectorAll('.property-more-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+                }
+            });
+        }
     },
     
     setupEventListeners() {

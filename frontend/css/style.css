@@ -148,7 +148,7 @@ a{-webkit-tap-highlight-color:transparent}
 .properties-grid{display:grid;grid-template-columns:repeat(3, minmax(320px, 360px));gap:16px;align-items:start;justify-content:start;justify-items:start}
 .property-card{background:var(--bg-white);border:1px solid var(--border-light);border-radius:var(--radius);padding:18px 20px;transition:var(--transition)}
 .property-card:hover{background:var(--bg-hover)}
-.property-card:active{transform:scale(0.98)}
+.property-card:active{transform:none !important}
 .property-card .card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .property-card .card-header h4{font-weight:500;margin:0;font-size:1rem;color:var(--primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%}
 .property-card .card-header .property-status{font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;padding:2px 10px;border-radius:12px;font-weight:500;flex-shrink:0}
@@ -1073,10 +1073,10 @@ body.dark-mode select option {
 .property-more-menu button:hover{background:var(--bg-hover)}
 .property-more-menu .property-menu-delete{color:#dc3545}
 .settings-heading-icon{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;color:var(--text-light)}
-.nav-link{position:relative;isolation:isolate;transition:color .22s ease,background-color .22s ease,transform .22s ease}
-.nav-link::before{content:"";position:absolute;inset:3px;border-radius:8px;background:var(--primary-light);opacity:0;transform:scale(.96);transition:opacity .22s ease,transform .22s ease;z-index:-1}
-.nav-link.active::before{opacity:1;transform:scale(1)}
-.nav-link:hover{transform:translateX(2px)}
+.nav-link{position:relative;isolation:isolate;transition:none !important}
+.nav-link::before{content:none !important}
+.nav-link.active::before{display:none !important}
+.nav-link:hover{transform:none !important}
 body.dark-mode .property-more-menu{background:var(--bg-white);border-color:var(--border)}
 body.dark-mode .property-more-menu button{color:var(--text)}
 body.dark-mode .property-more-menu button:hover{background:var(--bg-hover)}
@@ -1088,3 +1088,7 @@ body.dark-mode select{background-image:var(--select-arrow-dark, none);}
 /* Form fields in the edit-room overlay align in two columns on desktop. */
 @media (min-width:769px){#modalBody .room-edit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}#modalBody .room-edit-grid .form-group{min-width:0}}
 @media (max-width:768px){.property-more-btn,.app-topbar-icon-btn{width:34px;height:34px}.property-card-head-actions{gap:5px}}
+
+/* Requested interaction cleanup: property cards do not press/scale; sidebar selection changes instantly. */
+.property-card,.property-card:active,.property-card:focus{transform:none !important;transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease !important}
+.nav-link,.nav-link::before,.nav-link:hover,.nav-link.active{transform:none !important;transition:none !important}
