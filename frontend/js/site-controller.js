@@ -90,24 +90,24 @@ const SiteController = {
           const message = lockUnavailable
             ? 'Google verified your account, but Rental Manager could not reach its shared database protection service. Your sign-in was not completed and no changes were saved. This is a server configuration/availability issue; please try again later or contact the site administrator.'
             : callbackMessage || payload.error || 'Google sign-in could not be completed. Please try again.';
-          window.Components?.showError?.(title, message);
+          this.showAuthError(title, message);
         } else if (quotaMessage) {
-          window.Components?.showError?.('Google Drive storage is full', payload.error || 'Free up space in Google Drive, Gmail, or Google Photos, then sign in again.');
+          this.showAuthError('Google Drive storage is full', payload.error || 'Free up space in Google Drive, Gmail, or Google Photos, then sign in again.');
         } else if (transientServerFailure) {
           const message = status === 503
             ? (payload.error || 'The Rental Manager server is temporarily unavailable (HTTP 503). Your account has not been signed out; please retry in a few minutes.')
             : status >= 500
               ? (payload.error || `The Rental Manager server returned an error (HTTP ${status}). Please retry shortly.`)
               : 'The Rental Manager server could not be reached. Check your internet connection and try again.';
-          window.Components?.showError?.('Unable to connect to Rental Manager', message);
+          this.showAuthError('Unable to connect to Rental Manager', message);
         } else if (authCallback) {
-          window.Components?.showError?.('Google Sign-In', payload.error || 'Your session could not be verified. Please sign in again.');
+          this.showAuthError('Google Sign-In failed', payload.error || 'Your session could not be verified. Please sign in again.');
         }
         if (authCallback) history.replaceState({}, document.title, location.pathname + location.hash);
         return;
       }
       const user = payload?.data?.user;
-      if (!user) { Auth.clear(); this.updateAuthUI(false); this.hideAuthLoading(); return; }
+      if (!user) { Auth.clear(); this.updateAuthUI(false); this.hideAuthLoading(); if (authCallback) this.showAuthError('Sign-in could not be completed', 'Google returned to Rental Manager, but the server did not provide a valid signed-in session. No account changes were made. Please retry.'); return; }
       Auth.setUser(user, null);
       this.updateAuthUI(true);
       this.hideAuthLoading();
@@ -120,9 +120,20 @@ const SiteController = {
     } catch (error) {
       this.hideAuthLoading();
       this.updateAuthUI(!!Auth.isAuthenticated);
-      window.Components?.showError?.('Connection problem', 'Rental Manager could not reach its server. Check your internet connection. If the problem continues, the server may be unavailable; no changes were saved.');
+      this.showAuthError('Connection problem', 'Rental Manager could not verify your sign-in because the server could not be reached. Check the connection and retry. If this continues, the site administrator must check the server and database logs. No changes were saved.');
       if (authCallback) history.replaceState({}, document.title, location.pathname + location.hash);
     }
+  },
+  showAuthError(title, message) {
+    // showError() accepts a single message, not (title, message). Use showAlert
+    // so authentication failures have a real title, readable details and a retry action.
+    const retry = () => { window.location.href = `${API.baseURL}/auth/google/start`; };
+    if (window.Components?.showAlert) {
+      window.Components.showAlert(title, message, 'Try again', 'danger', retry);
+      return;
+    }
+    // Last-resort visible feedback if the shared popup component did not load.
+    window.alert(`${title}\n\n${message}`);
   },
   showAuthLoading(message = 'Connecting to Google…') {
     let overlay = document.getElementById('authLoadingOverlay');
