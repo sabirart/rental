@@ -51,7 +51,7 @@ const Properties = {
                 <div class="property-card">
                     <div class="card-header">
                         <h4>${escapeHTML(property.name)}</h4>
-                        <span class="badge ${statusClass} property-status">${escapeHTML(property.status || 'Active')}</span>
+                        <div class="property-card-head-actions"><span class="badge ${statusClass} property-status">${escapeHTML(property.status || 'Active')}</span><button type="button" class="property-more-btn" aria-label="Property options" aria-expanded="false" data-id="${escapeHTML(property.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg></button><div class="property-more-menu" hidden><button type="button" class="property-menu-edit" data-id="${escapeHTML(property.id)}">Edit property</button><button type="button" class="property-menu-delete" data-id="${escapeHTML(property.id)}">Delete property</button></div></div>
                     </div>
                     <div class="card-body">
                         <div class="property-details">
@@ -73,26 +73,25 @@ const Properties = {
                             <div class="tenant-names">${tenantList}</div>
                         </div>
                     </div>
-                    <div class="card-actions">
-                        <button class="btn btn-sm btn-edit edit-property" data-id="${escapeHTML(property.id)}">Edit</button>
-                        <button class="btn btn-sm btn-delete delete-property" data-id="${escapeHTML(property.id)}">Delete</button>
-                        <button class="btn btn-sm btn-rooms view-rooms" data-id="${escapeHTML(property.id)}">Rooms</button>
-                    </div>
+
                 </div>
             `;
         }
         
         container.innerHTML = html;
         
+        container.querySelectorAll('.property-more-btn').forEach(btn => {
+            btn.addEventListener('click', (event) => { event.stopPropagation(); const menu = btn.parentElement.querySelector('.property-more-menu'); const open = menu.hidden; container.querySelectorAll('.property-more-menu').forEach(m => m.hidden = true); container.querySelectorAll('.property-more-btn').forEach(b => b.setAttribute('aria-expanded','false')); menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); });
+        });
+        container.querySelectorAll('.property-menu-edit').forEach(btn => btn.addEventListener('click', () => this.editProperty(btn.dataset.id)));
+        container.querySelectorAll('.property-menu-delete').forEach(btn => btn.addEventListener('click', () => this.deleteProperty(btn.dataset.id)));
         container.querySelectorAll('.edit-property').forEach(btn => {
             btn.addEventListener('click', () => this.editProperty(btn.dataset.id));
         });
         container.querySelectorAll('.delete-property').forEach(btn => {
             btn.addEventListener('click', () => this.deleteProperty(btn.dataset.id));
         });
-        container.querySelectorAll('.view-rooms').forEach(btn => {
-            btn.addEventListener('click', () => this.showRoomManagement(btn.dataset.id));
-        });
+        document.addEventListener('click', () => container.querySelectorAll('.property-more-menu').forEach(m => m.hidden = true), { once: true });
     },
     
     setupEventListeners() {
@@ -992,13 +991,15 @@ const Properties = {
                 if (!room) { showNotification('Room not found', 'error'); return; }
                 
                 const form = `
-                    <div class="form-group">
-                        <label>Room Name</label>
-                        <input type="text" class="form-control" id="editRoomName" value="${escapeHTML(room.room_name || '')}">
-                    </div>
-                    <div class="form-group">
-                        <label>Rent Amount</label>
-                        <input type="number" class="form-control" id="editRoomRent" value="${room.rent_amount || 0}" min="0">
+                    <div class="room-edit-grid">
+                      <div class="form-group">
+                          <label>Room Name</label>
+                          <input type="text" class="form-control" id="editRoomName" value="${escapeHTML(room.room_name || '')}">
+                      </div>
+                      <div class="form-group">
+                          <label>Rent Amount</label>
+                          <input type="number" class="form-control" id="editRoomRent" value="${room.rent_amount || 0}" min="0">
+                      </div>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-primary" data-rm-action="room-update" data-property-id="${escapeHTML(propertyId)}" data-room="${Number(roomNumber)}" id="roomSubmitBtn">Update</button>

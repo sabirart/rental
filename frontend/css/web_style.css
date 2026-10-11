@@ -462,3 +462,13 @@
     font-style: normal;
     line-height: 1;
 }
+
+/* Shared dark theme for the public landing page and account overlays. */
+html.dark-mode,body.dark-mode{color-scheme:dark}
+body.dark-mode #siteOverlay,body.dark-mode .site-overlay,body.dark-mode .auth-overlay,body.dark-mode .account-overlay,body.dark-mode .login-overlay{background:#171717;color:#f3f3f3}
+body.dark-mode .hero,body.dark-mode .site-section,body.dark-mode .feature-card,body.dark-mode .review-card,body.dark-mode .pricing-card,body.dark-mode .auth-modal,body.dark-mode .account-modal,body.dark-mode .auth-card{background-color:#202020;color:#f3f3f3;border-color:#383838}
+body.dark-mode .hero p,body.dark-mode .site-section p,body.dark-mode .feature-card p,body.dark-mode .auth-modal p,body.dark-mode .account-modal p{color:#bdbdbd}
+body.dark-mode input,body.dark-mode textarea,body.dark-mode select{background-color:#242424;color:#f5f5f5;border-color:#454545;color-scheme:dark}
+body.dark-mode input::placeholder,body.dark-mode textarea::placeholder{color:#999}
+body.dark-mode .btn-google{background:#fff!important;color:#202124!important;border-color:#dadce0!important;box-shadow:0 1px 2px rgba(0,0,0,.16);border-radius:9px;font-weight:600;transition:box-shadow .18s ease,transform .18s ease}
+body.dark-mode .btn-google:hover{box-shadow:0 2px 7px rgba(0,0,0,.22);transform:translateY(-1px)}
